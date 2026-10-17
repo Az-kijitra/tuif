@@ -1,0 +1,31 @@
+[package]
+name = "cuifiler"
+version = "0.1.0"
+edition = "2021"
+description = "Keyboard-driven CUI/TUI file manager for Windows PowerShell, built with Rust and Ratatui."
+
+[lib]
+name = "cuifiler"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tuif"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+unicode-width = "0.2"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+trash = "3"
+zip = { version = "7", default-features = false, features = ["deflate", "time"] }
+time = { version = "0.3", default-features = false, features = ["std", "local-offset"] }
+encoding_rs = "0.8"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile = "3"

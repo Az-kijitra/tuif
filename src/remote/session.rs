@@ -12,6 +12,7 @@
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -222,6 +223,32 @@ pub struct TransferStats {
     pub bytes: u64,
 }
 
+/// Real-time progress update for an individual file during transfer.
+#[derive(Debug, Clone)]
+pub struct ProgressUpdate {
+    pub file_name: String,
+    pub file_bytes_transferred: u64,
+    pub file_total_bytes: u64,
+    pub completed_files: usize,
+    pub total_bytes_transferred: u64,
+}
+
+/// User's decision when a target file already exists during transfer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictChoice {
+    Overwrite,
+    Skip,
+    OverwriteAll,
+    SkipAll,
+    Cancel,
+}
+
+struct TransferContext<'a, F, C> {
+    pub cancel: &'a AtomicBool,
+    pub on_progress: &'a mut F,
+    pub on_conflict: &'a mut C,
+}
+
 /// An authenticated SFTP session.
 pub struct RemoteSession {
     handle: Handle<ClientHandler>,
@@ -416,21 +443,57 @@ impl RemoteSession {
         })
     }
 
-    /// Downloads `remote` (file or directory tree) to exactly `local_dest`, overwriting files.
+    /// Downloads `remote` (file or directory tree) to exactly `local_dest`.
     pub fn download(&self, remote: &str, local_dest: &Path) -> Result<TransferStats, String> {
+        let cancel = AtomicBool::new(false);
+        self.download_with_progress(remote, local_dest, &cancel, |_| {}, |_| ConflictChoice::Overwrite)
+    }
+
+    /// Downloads `remote` to `local_dest` with cancellation, conflict resolution, and progress reporting.
+    pub fn download_with_progress<F, C>(
+        &self,
+        remote: &str,
+        local_dest: &Path,
+        cancel: &AtomicBool,
+        mut on_progress: F,
+        mut on_conflict: C,
+    ) -> Result<TransferStats, String>
+    where
+        F: FnMut(&ProgressUpdate),
+        C: FnMut(&str) -> ConflictChoice,
+    {
         runtime().block_on(async {
             let mut stats = TransferStats::default();
+            let mut cx = TransferContext {
+                cancel,
+                on_progress: &mut on_progress,
+                on_conflict: &mut on_conflict,
+            };
             let meta = self.sftp.metadata(remote).await.map_err(|e| err("Stat", remote, e))?;
             if !meta.is_dir() {
-                self.download_file(remote, local_dest, meta.mtime, &mut stats).await?;
+                self.download_file_with_progress(
+                    remote,
+                    local_dest,
+                    meta.size.unwrap_or(0),
+                    meta.mtime,
+                    &mut stats,
+                    &mut cx,
+                )
+                .await?;
                 return Ok(stats);
             }
             let mut stack = vec![(rpath::normalize(remote), local_dest.to_path_buf())];
             while let Some((rdir, ldir)) = stack.pop() {
+                if cx.cancel.load(Ordering::Relaxed) {
+                    return Err("Transfer cancelled by user".to_string());
+                }
                 std::fs::create_dir_all(&ldir).map_err(|e| err("Create folder", &ldir.display().to_string(), e))?;
                 stats.dirs += 1;
                 let rd = self.sftp.read_dir(rdir.clone()).await.map_err(|e| err("List", &rdir, e))?;
                 for de in rd {
+                    if cx.cancel.load(Ordering::Relaxed) {
+                        return Err("Transfer cancelled by user".to_string());
+                    }
                     let name = de.file_name();
                     if name == "." || name == ".." {
                         continue;
@@ -447,7 +510,15 @@ impl RemoteSession {
                     if m.is_dir() {
                         stack.push((rchild, lchild));
                     } else {
-                        self.download_file(&rchild, &lchild, m.mtime, &mut stats).await?;
+                        self.download_file_with_progress(
+                            &rchild,
+                            &lchild,
+                            m.size.unwrap_or(0),
+                            m.mtime,
+                            &mut stats,
+                            &mut cx,
+                        )
+                        .await?;
                     }
                 }
             }
@@ -455,46 +526,150 @@ impl RemoteSession {
         })
     }
 
-    async fn download_file(
+    async fn download_file_with_progress<F, C>(
         &self,
         remote: &str,
         local: &Path,
+        file_size: u64,
         mtime: Option<u32>,
         stats: &mut TransferStats,
-    ) -> Result<(), String> {
+        cx: &mut TransferContext<'_, F, C>,
+    ) -> Result<(), String>
+    where
+        F: FnMut(&ProgressUpdate),
+        C: FnMut(&str) -> ConflictChoice,
+    {
+        let fname = rpath::file_name(remote);
+
+        // Check for conflict before opening/overwriting local file
+        if local.exists() {
+            match (cx.on_conflict)(&fname) {
+                ConflictChoice::Overwrite | ConflictChoice::OverwriteAll => {}
+                ConflictChoice::Skip | ConflictChoice::SkipAll => {
+                    stats.files += 1;
+                    stats.bytes += file_size;
+                    (cx.on_progress)(&ProgressUpdate {
+                        file_name: fname,
+                        file_bytes_transferred: file_size,
+                        file_total_bytes: file_size,
+                        completed_files: stats.files as usize,
+                        total_bytes_transferred: stats.bytes,
+                    });
+                    return Ok(());
+                }
+                ConflictChoice::Cancel => {
+                    return Err("Transfer cancelled by user".to_string());
+                }
+            }
+        }
+
         let mut rf = self.sftp.open(remote).await.map_err(|e| err("Open", remote, e))?;
         if let Some(parent) = local.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let mut lf = std::fs::File::create(local).map_err(|e| err("Write", &local.display().to_string(), e))?;
         let mut buf = vec![0u8; CHUNK];
+        let mut file_transferred = 0u64;
+        let mut last_update = std::time::Instant::now();
+
+        (cx.on_progress)(&ProgressUpdate {
+            file_name: fname.clone(),
+            file_bytes_transferred: 0,
+            file_total_bytes: file_size,
+            completed_files: stats.files as usize,
+            total_bytes_transferred: stats.bytes,
+        });
+
         loop {
+            if cx.cancel.load(Ordering::Relaxed) {
+                drop(lf);
+                let _ = std::fs::remove_file(local);
+                return Err("Transfer cancelled by user".to_string());
+            }
             let n = rf.read(&mut buf).await.map_err(|e| err("Download", remote, e))?;
             if n == 0 {
                 break;
             }
-            lf.write_all(&buf[..n]).map_err(|e| err("Write", &local.display().to_string(), e))?;
+            if let Err(e) = lf.write_all(&buf[..n]) {
+                drop(lf);
+                let _ = std::fs::remove_file(local);
+                return Err(err("Write", &local.display().to_string(), e));
+            }
             stats.bytes += n as u64;
+            file_transferred += n as u64;
+
+            let now = std::time::Instant::now();
+            if now.duration_since(last_update) >= Duration::from_millis(50) {
+                last_update = now;
+                (cx.on_progress)(&ProgressUpdate {
+                    file_name: fname.clone(),
+                    file_bytes_transferred: file_transferred,
+                    file_total_bytes: file_size,
+                    completed_files: stats.files as usize,
+                    total_bytes_transferred: stats.bytes,
+                });
+            }
         }
         let _ = rf.shutdown().await;
         if let Some(secs) = mtime {
             let _ = lf.set_modified(UNIX_EPOCH + Duration::from_secs(u64::from(secs)));
         }
         stats.files += 1;
+
+        (cx.on_progress)(&ProgressUpdate {
+            file_name: fname,
+            file_bytes_transferred: file_transferred,
+            file_total_bytes: file_size,
+            completed_files: stats.files as usize,
+            total_bytes_transferred: stats.bytes,
+        });
+
         Ok(())
     }
 
-    /// Uploads `local` (file or directory tree) to exactly `remote_dest`, overwriting files.
+    /// Uploads `local` (file or directory tree) to exactly `remote_dest`.
     pub fn upload(&self, local: &Path, remote_dest: &str) -> Result<TransferStats, String> {
+        let cancel = AtomicBool::new(false);
+        self.upload_with_progress(local, remote_dest, &cancel, |_| {}, |_| ConflictChoice::Overwrite)
+    }
+
+    /// Uploads `local` to `remote_dest` with cancellation, conflict resolution, and progress reporting.
+    pub fn upload_with_progress<F, C>(
+        &self,
+        local: &Path,
+        remote_dest: &str,
+        cancel: &AtomicBool,
+        mut on_progress: F,
+        mut on_conflict: C,
+    ) -> Result<TransferStats, String>
+    where
+        F: FnMut(&ProgressUpdate),
+        C: FnMut(&str) -> ConflictChoice,
+    {
         runtime().block_on(async {
             let mut stats = TransferStats::default();
+            let mut cx = TransferContext {
+                cancel,
+                on_progress: &mut on_progress,
+                on_conflict: &mut on_conflict,
+            };
             let meta = std::fs::metadata(local).map_err(|e| err("Stat", &local.display().to_string(), e))?;
             if !meta.is_dir() {
-                self.upload_file(local, remote_dest, &mut stats).await?;
+                self.upload_file_with_progress(
+                    local,
+                    remote_dest,
+                    meta.len(),
+                    &mut stats,
+                    &mut cx,
+                )
+                .await?;
                 return Ok(stats);
             }
             let mut stack = vec![(local.to_path_buf(), rpath::normalize(remote_dest))];
             while let Some((ldir, rdir)) = stack.pop() {
+                if cx.cancel.load(Ordering::Relaxed) {
+                    return Err("Transfer cancelled by user".to_string());
+                }
                 if !self.sftp.try_exists(rdir.clone()).await.unwrap_or(false) {
                     self.sftp
                         .create_dir(rdir.clone())
@@ -504,13 +679,24 @@ impl RemoteSession {
                 stats.dirs += 1;
                 let rd = std::fs::read_dir(&ldir).map_err(|e| err("List", &ldir.display().to_string(), e))?;
                 for de in rd.flatten() {
+                    if cx.cancel.load(Ordering::Relaxed) {
+                        return Err("Transfer cancelled by user".to_string());
+                    }
                     let name = de.file_name().to_string_lossy().into_owned();
                     let lchild = de.path();
                     let rchild = rpath::join(&rdir, &name);
                     if lchild.is_dir() {
                         stack.push((lchild, rchild));
                     } else {
-                        self.upload_file(&lchild, &rchild, &mut stats).await?;
+                        let fsize = de.metadata().map(|m| m.len()).unwrap_or(0);
+                        self.upload_file_with_progress(
+                            &lchild,
+                            &rchild,
+                            fsize,
+                            &mut stats,
+                            &mut cx,
+                        )
+                        .await?;
                     }
                 }
             }
@@ -518,7 +704,45 @@ impl RemoteSession {
         })
     }
 
-    async fn upload_file(&self, local: &Path, remote: &str, stats: &mut TransferStats) -> Result<(), String> {
+    async fn upload_file_with_progress<F, C>(
+        &self,
+        local: &Path,
+        remote: &str,
+        file_size: u64,
+        stats: &mut TransferStats,
+        cx: &mut TransferContext<'_, F, C>,
+    ) -> Result<(), String>
+    where
+        F: FnMut(&ProgressUpdate),
+        C: FnMut(&str) -> ConflictChoice,
+    {
+        let fname = local
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| remote.to_string());
+
+        // Check for conflict before opening/truncating remote file
+        if self.sftp.try_exists(remote.to_string()).await.unwrap_or(false) {
+            match (cx.on_conflict)(&fname) {
+                ConflictChoice::Overwrite | ConflictChoice::OverwriteAll => {}
+                ConflictChoice::Skip | ConflictChoice::SkipAll => {
+                    stats.files += 1;
+                    stats.bytes += file_size;
+                    (cx.on_progress)(&ProgressUpdate {
+                        file_name: fname,
+                        file_bytes_transferred: file_size,
+                        file_total_bytes: file_size,
+                        completed_files: stats.files as usize,
+                        total_bytes_transferred: stats.bytes,
+                    });
+                    return Ok(());
+                }
+                ConflictChoice::Cancel => {
+                    return Err("Transfer cancelled by user".to_string());
+                }
+            }
+        }
+
         let mut lf = std::fs::File::open(local).map_err(|e| err("Read", &local.display().to_string(), e))?;
         let mut rf = self
             .sftp
@@ -526,13 +750,46 @@ impl RemoteSession {
             .await
             .map_err(|e| err("Create", remote, e))?;
         let mut buf = vec![0u8; CHUNK];
+        let mut file_transferred = 0u64;
+        let mut last_update = std::time::Instant::now();
+
+        (cx.on_progress)(&ProgressUpdate {
+            file_name: fname.clone(),
+            file_bytes_transferred: 0,
+            file_total_bytes: file_size,
+            completed_files: stats.files as usize,
+            total_bytes_transferred: stats.bytes,
+        });
+
         loop {
+            if cx.cancel.load(Ordering::Relaxed) {
+                let _ = rf.shutdown().await;
+                let _ = self.sftp.remove_file(remote.to_string()).await;
+                return Err("Transfer cancelled by user".to_string());
+            }
             let n = lf.read(&mut buf).map_err(|e| err("Read", &local.display().to_string(), e))?;
             if n == 0 {
                 break;
             }
-            rf.write_all(&buf[..n]).await.map_err(|e| err("Upload", remote, e))?;
+            if let Err(e) = rf.write_all(&buf[..n]).await {
+                let _ = rf.shutdown().await;
+                let _ = self.sftp.remove_file(remote.to_string()).await;
+                return Err(err("Upload", remote, e));
+            }
             stats.bytes += n as u64;
+            file_transferred += n as u64;
+
+            let now = std::time::Instant::now();
+            if now.duration_since(last_update) >= Duration::from_millis(50) {
+                last_update = now;
+                (cx.on_progress)(&ProgressUpdate {
+                    file_name: fname.clone(),
+                    file_bytes_transferred: file_transferred,
+                    file_total_bytes: file_size,
+                    completed_files: stats.files as usize,
+                    total_bytes_transferred: stats.bytes,
+                });
+            }
         }
         rf.shutdown().await.map_err(|e| err("Upload", remote, e))?;
         // Preserve the modification time (best effort, like WinSCP's default).
@@ -548,7 +805,59 @@ impl RemoteSession {
             }
         }
         stats.files += 1;
+
+        (cx.on_progress)(&ProgressUpdate {
+            file_name: fname,
+            file_bytes_transferred: file_transferred,
+            file_total_bytes: file_size,
+            completed_files: stats.files as usize,
+            total_bytes_transferred: stats.bytes,
+        });
+
         Ok(())
+    }
+
+    /// Recursively counts files and total bytes of a remote file or directory.
+    pub fn calc_remote_size(&self, path: &str, cancel: &AtomicBool) -> Result<(usize, u64), String> {
+        runtime().block_on(async {
+            let meta = self.sftp.metadata(path).await.map_err(|e| err("Stat", path, e))?;
+            if !meta.is_dir() {
+                return Ok((1, meta.size.unwrap_or(0)));
+            }
+            let mut files = 0;
+            let mut bytes = 0;
+            let mut stack = vec![rpath::normalize(path)];
+            while let Some(dir) = stack.pop() {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err("Transfer cancelled by user".to_string());
+                }
+                let rd = self.sftp.read_dir(dir.clone()).await.map_err(|e| err("List", &dir, e))?;
+                for de in rd {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err("Transfer cancelled by user".to_string());
+                    }
+                    let name = de.file_name();
+                    if name == "." || name == ".." {
+                        continue;
+                    }
+                    let child = rpath::join(&dir, &name);
+                    let mut m = de.metadata();
+                    if m.file_type().is_symlink() {
+                        match self.sftp.metadata(child.clone()).await {
+                            Ok(t) => m = t,
+                            Err(_) => continue,
+                        }
+                    }
+                    if m.is_dir() {
+                        stack.push(child);
+                    } else {
+                        files += 1;
+                        bytes += m.size.unwrap_or(0);
+                    }
+                }
+            }
+            Ok((files, bytes))
+        })
     }
 
     /// Size in bytes of a remote file (follows symlinks).
@@ -571,6 +880,34 @@ impl RemoteSession {
             .await;
         });
     }
+}
+
+/// Recursively counts files and total bytes of a local file or directory.
+pub fn calc_local_size(path: &Path) -> (usize, u64) {
+    if !path.exists() {
+        return (0, 0);
+    }
+    if !path.is_dir() {
+        return (1, std::fs::metadata(path).map(|m| m.len()).unwrap_or(0));
+    }
+    let mut files = 0;
+    let mut bytes = 0;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for de in rd.flatten() {
+                if let Ok(ft) = de.file_type() {
+                    if ft.is_dir() {
+                        stack.push(de.path());
+                    } else {
+                        files += 1;
+                        bytes += de.metadata().map(|m| m.len()).unwrap_or(0);
+                    }
+                }
+            }
+        }
+    }
+    (files, bytes)
 }
 
 /// Replaces characters that are invalid in Windows file names.
@@ -606,5 +943,21 @@ mod tests {
         assert_eq!(sanitize_windows_name("a:b*c?.txt"), "a_b_c_.txt");
         assert_eq!(sanitize_windows_name("trail."), "trail_");
         assert_eq!(sanitize_windows_name("ok.txt"), "ok.txt");
+    }
+
+    #[test]
+    fn calc_local_size_counts_nested_folder_files_and_bytes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sub1 = tmp.path().join("sub1");
+        let sub2 = sub1.join("sub2");
+        std::fs::create_dir_all(&sub2).unwrap();
+
+        std::fs::write(tmp.path().join("f1.txt"), b"12345").unwrap(); // 5 bytes
+        std::fs::write(sub1.join("f2.txt"), b"1234567890").unwrap(); // 10 bytes
+        std::fs::write(sub2.join("f3.bin"), b"abc").unwrap(); // 3 bytes
+
+        let (files, bytes) = calc_local_size(tmp.path());
+        assert_eq!(files, 3);
+        assert_eq!(bytes, 18);
     }
 }

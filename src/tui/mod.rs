@@ -3,11 +3,14 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Row, Table};
+use ratatui::widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Row, Table};
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{normalize_tree_key, tree_node_key, AppState, ClipMode, FocusPane, OverlayMode};
+use crate::app::{
+    normalize_tree_key, tree_node_key, AppState, ClipMode, ConflictPromptData, FocusPane, OverlayMode,
+    TransferProgressState,
+};
 use crate::fs::query::EntryType;
 use crate::remote::profile::ConnectionProfile;
 
@@ -115,6 +118,14 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
         }
         OverlayMode::MenuBar { cat_idx, item_idx } => {
             draw_menubar_dropdown(frame, area, app, *cat_idx, *item_idx);
+        }
+    }
+
+    // If an active background transfer is running, draw progress modal on top of everything
+    if let Some(transfer) = &app.active_transfer {
+        draw_transfer_progress_modal(frame, area, &transfer.current_state);
+        if let Some(prompt) = &transfer.conflict_prompt {
+            draw_conflict_confirm_modal(frame, area, prompt);
         }
     }
 }
@@ -946,6 +957,227 @@ fn draw_connection_edit_modal(
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
+fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferProgressState) {
+    let width = 64.min(area.width.saturating_sub(4)).max(30);
+    let height = 11.min(area.height.saturating_sub(2));
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let modal_rect = Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+
+    frame.render_widget(Clear, modal_rect);
+
+    let border_style = if state.is_cancelling {
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    };
+
+    let title_text = format!(" {} ", state.title);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Span::styled(title_text, border_style));
+
+    let inner = block.inner(modal_rect);
+    frame.render_widget(block, modal_rect);
+
+    if inner.width < 4 || inner.height < 5 {
+        return;
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Current file label
+            Constraint::Length(1), // Current file gauge
+            Constraint::Length(1), // Blank separator
+            Constraint::Length(1), // Overall label
+            Constraint::Length(1), // Overall gauge
+            Constraint::Min(1),    // Cancel note
+        ])
+        .split(inner);
+
+    // 1. Current file label
+    let cur_fname = if state.current_file.is_empty() {
+        "Preparing transfer...".to_string()
+    } else {
+        format!("File: {}", truncate_display_width(&state.current_file, (inner.width as usize).saturating_sub(6)))
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(cur_fname, Style::default().fg(Color::White)),
+        ])),
+        chunks[0],
+    );
+
+    // 2. Current file gauge
+    let cur_ratio = if state.current_file_total > 0 {
+        (state.current_file_bytes as f64 / state.current_file_total as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let cur_percent = (cur_ratio * 100.0) as u16;
+    let cur_label = if state.current_file_total > 0 {
+        format!(
+            "{} / {} ({}%)",
+            format_size(state.current_file_bytes),
+            format_size(state.current_file_total),
+            cur_percent
+        )
+    } else {
+        format_size(state.current_file_bytes)
+    };
+    let cur_gauge = Gauge::default()
+        .gauge_style(Style::default().fg(Color::Cyan).bg(Color::DarkGray))
+        .ratio(cur_ratio)
+        .label(Span::styled(cur_label, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)));
+    frame.render_widget(cur_gauge, chunks[1]);
+
+    // 3. Overall label
+    let total_files_str = if state.total_files > 0 {
+        format!("{} / {} files", state.files_transferred, state.total_files)
+    } else {
+        format!("{} files", state.files_transferred)
+    };
+    let total_bytes_str = if state.total_bytes > 0 {
+        format!(
+            "{} / {}",
+            format_size(state.total_bytes_transferred),
+            format_size(state.total_bytes)
+        )
+    } else {
+        format_size(state.total_bytes_transferred)
+    };
+    let overall_text = format!("Total: {total_files_str} ({total_bytes_str})");
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(overall_text, Style::default().fg(Color::White)),
+        ])),
+        chunks[3],
+    );
+
+    // 4. Overall gauge
+    let overall_ratio = if state.total_bytes > 0 {
+        (state.total_bytes_transferred as f64 / state.total_bytes as f64).clamp(0.0, 1.0)
+    } else if state.total_files > 0 {
+        (state.files_transferred as f64 / state.total_files as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let overall_percent = (overall_ratio * 100.0) as u16;
+    let overall_label = format!("{overall_percent}%");
+    let overall_gauge = Gauge::default()
+        .gauge_style(Style::default().fg(Color::Green).bg(Color::DarkGray))
+        .ratio(overall_ratio)
+        .label(Span::styled(overall_label, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)));
+    frame.render_widget(overall_gauge, chunks[4]);
+
+    // 5. Cancel note
+    let cancel_line = if state.is_cancelling {
+        Line::from(vec![
+            Span::styled(" Cancelling transfer... Please wait ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(" Press ", Style::default().fg(Color::DarkGray)),
+            Span::styled("[Esc]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(" to cancel ", Style::default().fg(Color::DarkGray)),
+        ])
+    };
+    frame.render_widget(Paragraph::new(cancel_line), chunks[5]);
+}
+
+fn draw_conflict_confirm_modal(frame: &mut Frame, area: Rect, prompt: &ConflictPromptData) {
+    let width = 76.min(area.width.saturating_sub(2)).max(30);
+    let height = 9.min(area.height.saturating_sub(2));
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let modal_rect = Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+
+    frame.render_widget(Clear, modal_rect);
+
+    let border_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Span::styled(" Confirm File Replace ", border_style));
+
+    let inner = block.inner(modal_rect);
+    frame.render_widget(block, modal_rect);
+
+    if inner.width < 4 || inner.height < 5 {
+        return;
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Warning text
+            Constraint::Length(1), // Target filename
+            Constraint::Length(1), // Blank
+            Constraint::Length(1), // Action buttons
+            Constraint::Min(1),    // Shortcut hint
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Destination file already exists:", Style::default().fg(Color::White)),
+        ])),
+        chunks[0],
+    );
+
+    let display_fname = truncate_display_width(&prompt.file_name, inner.width as usize);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("  {display_fname}"), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        ])),
+        chunks[1],
+    );
+
+    // Buttons
+    let buttons = [
+        (" Overwrite(o) ", 0),
+        (" Skip(s) ", 1),
+        (" OverwriteAll(a) ", 2),
+        (" SkipAll(k) ", 3),
+        (" Cancel(Esc) ", 4),
+    ];
+    let mut btn_spans = Vec::new();
+    for (label, idx) in buttons {
+        if idx == prompt.cursor {
+            btn_spans.push(Span::styled(
+                label,
+                Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            btn_spans.push(Span::styled(
+                label,
+                Style::default().fg(Color::White).bg(Color::DarkGray),
+            ));
+        }
+        btn_spans.push(Span::raw(" "));
+    }
+    frame.render_widget(Paragraph::new(Line::from(btn_spans)), chunks[3]);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Left/Right/Tab: Select | Enter: Confirm | o/s/a/k/Esc: Quick key", Style::default().fg(Color::DarkGray)),
+        ])),
+        chunks[4],
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1026,5 +1258,108 @@ mod tests {
             }
             terminal.draw(|f| draw(f, &app)).unwrap();
         }
+    }
+
+    #[test]
+    fn transfer_progress_modal_renders_correctly() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::{mpsc, Arc};
+        use crate::app::ActiveTransfer;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = AppState::new(tmp.path().to_path_buf());
+
+        let (_tx, rx) = mpsc::channel();
+        app.active_transfer = Some(ActiveTransfer {
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            rx,
+            current_state: TransferProgressState {
+                title: "Uploading to Remote...".to_string(),
+                current_file: "large_data.bin".to_string(),
+                current_file_bytes: 50 * 1024 * 1024,
+                current_file_total: 100 * 1024 * 1024,
+                total_bytes_transferred: 50 * 1024 * 1024,
+                total_bytes: 200 * 1024 * 1024,
+                files_transferred: 1,
+                total_files: 3,
+                is_cancelling: false,
+            },
+            conflict_prompt: None,
+        });
+
+        let backend = TestBackend::new(100, 28);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered: String = (0..buffer.area.height)
+            .map(|y| {
+                let row: String = (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect();
+                row
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(rendered.contains("Uploading to Remote..."));
+        assert!(rendered.contains("large_data.bin"));
+        assert!(rendered.contains("[Esc]"));
+    }
+
+    #[test]
+    fn conflict_confirm_modal_renders_choices_and_filename() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::{mpsc, Arc};
+        use crate::app::{ActiveTransfer, ConflictPromptData};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = AppState::new(tmp.path().to_path_buf());
+
+        let (_tx, rx) = mpsc::channel();
+        let (reply_tx, _reply_rx) = mpsc::channel();
+        app.active_transfer = Some(ActiveTransfer {
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            rx,
+            current_state: TransferProgressState {
+                title: "Uploading...".to_string(),
+                current_file: "duplicate.txt".to_string(),
+                current_file_bytes: 10,
+                current_file_total: 100,
+                total_bytes_transferred: 10,
+                total_bytes: 100,
+                files_transferred: 0,
+                total_files: 1,
+                is_cancelling: false,
+            },
+            conflict_prompt: Some(ConflictPromptData {
+                file_name: "duplicate.txt".to_string(),
+                reply_tx,
+                cursor: 0,
+            }),
+        });
+
+        let backend = TestBackend::new(100, 28);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered: String = (0..buffer.area.height)
+            .map(|y| {
+                let row: String = (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect();
+                row
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(rendered.contains("Confirm File Replace"));
+        assert!(rendered.contains("duplicate.txt"));
+        assert!(rendered.contains("Overwrite(o)"));
+        assert!(rendered.contains("Skip(s)"));
+        assert!(rendered.contains("OverwriteAll(a)"));
+        assert!(rendered.contains("SkipAll(k)"));
+        assert!(rendered.contains("Cancel(Esc)"));
     }
 }

@@ -99,6 +99,8 @@ fn main() -> io::Result<()> {
     let mut app = AppState::new(cli.start_dir);
 
     while !app.should_quit {
+        app.poll_active_transfer();
+
         if let Ok(size) = terminal.size() {
             app.update_viewport_size(size.width, size.height);
         }
@@ -127,7 +129,13 @@ fn main() -> io::Result<()> {
             continue;
         }
 
-        if event::poll(Duration::from_millis(100))? {
+        let poll_timeout = if app.active_transfer.is_some() {
+            Duration::from_millis(50)
+        } else {
+            Duration::from_millis(100)
+        };
+
+        if event::poll(poll_timeout)? {
             match event::read()? {
                 Event::Key(key_event) => {
                     // On Windows, crossterm emits both Press and Release events; handle Press only.

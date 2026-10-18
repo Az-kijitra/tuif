@@ -70,6 +70,13 @@ fn vim_navigation_and_file_ops_workflow() {
 
     // `p` to paste `file1.txt` inside `dir_a`
     app.handle_key_event(key(KeyCode::Char('p')));
+    for _ in 0..50 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        app.poll_active_transfer();
+        if app.active_transfer.is_none() {
+            break;
+        }
+    }
     assert!(root.join("dir_a").join("file1.txt").is_file());
 
     // `Enter` on `file1.txt` opens the built-in TUI text viewer
@@ -333,4 +340,38 @@ fn tree_right_click_action_menu_and_gui_apps_workflow() {
         }
     );
 }
+
+#[test]
+fn tree_selection_switches_from_remote_to_local_directory() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let local_sub = root.join("local_folder");
+    std::fs::create_dir(&local_sub).unwrap();
+
+    let mut app = AppState::new(root.to_path_buf());
+    app.ui_state.ui_show_tree = true;
+
+    // Simulate an active remote SFTP state
+    app.remote_dir = Some("/var/www/html".to_string());
+    assert!(app.is_remote());
+
+    // Switch focus to Tree pane and find the local folder node
+    app.focus_pane = FocusPane::Tree;
+    let local_node_idx = app
+        .tree_nodes
+        .iter()
+        .position(|n| n.path == local_sub)
+        .expect("local_sub must exist in tree");
+    app.tree_cursor = local_node_idx;
+
+    // Press Enter to open the local folder from Tree
+    app.handle_key_event(key(KeyCode::Enter));
+
+    // Must switch back to local mode
+    assert!(!app.is_remote(), "remote_dir must be cleared to None");
+    assert_eq!(app.remote_dir, None);
+    assert_eq!(app.current_dir, local_sub);
+    assert_eq!(app.focus_pane, FocusPane::FileList);
+}
+
 

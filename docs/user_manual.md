@@ -1,10 +1,35 @@
 # `tuif` ユーザーマニュアル (0.1.0)
 
-`tuif` は、Windows PowerShell 環境で動作するキーボード主体 (Vim-like) の CUI/TUI ファイラーです。
+`tuif` は、Windows PowerShell 環境で動作するキーボード主体 (Vim-like) かつ Windows エクスプローラー互換のマウス操作・SFTP リモート接続（WinSCP ライク機能）を備えた CUI/TUI ファイラーです。
+
+---
+
+## 目次
+
+1. [前提・連携ソフトウェアのインストール方法](#1-前提連携ソフトウェアのインストール方法)
+2. [設定フォルダーと構成ファイル](#2-設定フォルダーと構成ファイル)
+3. [画面構成と基本操作](#3-画面構成と基本操作)
+   - [3.1 既定のキー割り当て (Vim-like)](#31-既定のキー割り当て-vim-like)
+   - [3.2 マウス操作 (Windows エクスプローラー互換)](#32-マウス操作-windows-エクスプローラー互換)
+4. [内蔵ビューア (テキスト・ソースコード・Markdown)](#4-内蔵ビューア-テキストソースコードmarkdown)
+   - [4.1 内蔵ビューア内のキー操作](#41-内蔵ビューア内のキー操作)
+5. [外部 CUI / GUI ツール連携](#5-外部-cui--gui-ツール連携)
+   - [5.1 登録済みツール一覧](#51-登録済みツール一覧)
+   - [5.2 外部アプリのカスタマイズ (`config.toml`)](#52-外部アプリのカスタマイズ-configtoml)
+6. [PowerShell カレントディレクトリ追従 (`cd on exit`)](#6-powershell-カレントディレクトリ追従-cd-on-exit)
+7. [SFTP リモート接続・ファイル管理 (WinSCP ライク機能)](#7-sftp-リモート接続ファイル管理-winscp-ライク機能)
+   - [7.1 接続プロファイル管理 (`Ctrl+S`)](#71-接続プロファイル管理-ctrls)
+   - [7.2 ホスト鍵の確認 (TOFU: Trust on First Use)](#72-ホスト鍵の確認-tofu-trust-on-first-use)
+   - [7.3 Drives / Tree ペインでのリモートツリー表示](#73-drives--tree-ペインでのリモートツリー表示)
+   - [7.4 ローカル ⇔ リモート間のファイル転送・遠隔操作](#74-ローカル--リモート間のファイル転送遠隔操作)
+   - [7.5 ファイル転送の進捗表示と中断 (プログレスバー & キャンセル)](#75-ファイル転送の進捗表示と中断-プログレスバー--キャンセル)
+8. [トラブルシューティング / FAQ](#8-トラブルシューティング--faq)
+
+---
 
 ## 1. 前提・連携ソフトウェアのインストール方法
 
-`tuif` は単体でも動作しますが、外部 CUI ツール連携および内蔵ビューアのシンタックスハイライト・Markdown プレビュー機能を最大限活用するため、以下のツールのインストールを推奨します。
+`tuif` は単体でもフル機能で動作しますが、外部ツール連携や内蔵ビューアのシンタックスハイライト・Markdown プレビュー機能を最大限活用するため、以下のツールのインストールを推奨します。
 
 PowerShell 上で以下のコマンドを実行してインストールできます。
 
@@ -14,27 +39,32 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | **Neovim (`nvim`)** | エディタ起動 (`Ctrl+Alt+V`) | `winget install Neovim.Neovim` |
 | **Lazygit (`lazygit`)** | Git クライアント起動 (`Ctrl+Alt+G`) | `winget install JesseDuffield.lazygit` |
 | **bat (`bat`)** | 内蔵ビューアのシンタックスハイライト / ページャ表示 (`Ctrl+Alt+B`) | `winget install sharkdp.bat` |
+| **VSCode (`Code.exe`)** | GUI エディタ起動 (`Ctrl+Alt+O`) | `winget install Microsoft.VisualStudioCode` |
 | **leaf (`leaf`)** | 内蔵ビューアの Markdown プレビュー表示 | `irm https://leaf.rivolink.mg/install.ps1 \| iex` |
 
 > **補足**: インストール後、`PATH` 環境変数を反映させるために PowerShell を再起動してください（`leaf` は `%LOCALAPPDATA%\Programs\leaf\leaf.exe` にインストールされた場合、`PATH` 再読込前でも `tuif` が自動検出します）。
 
 ---
 
-## 2. 設定フォルダー
+## 2. 設定フォルダーと構成ファイル
 
-設定ファイルは `%APPDATA%\cuifiler` に保存されます。
+設定ファイルは `%APPDATA%\cuifiler`（通常は `C:\Users\<ユーザー名>\AppData\Roaming\cuifiler`）に保存されます。
 
 | ファイル | 内容 |
 |---|---|
-| `config.toml` | キー割り当て (`[input_keymap_custom]`)、テーマ (`ui_theme`) |
-| `navigation.toml` | 訪問履歴とジャンプリスト |
+| `config.toml` | キー割り当て (`[input_keymap_custom]`)、テーマ (`ui_theme`)、外部アプリ定義 (`[[external_apps]]`) |
+| `navigation.toml` | 訪問履歴 (`history`) とジャンプリスト (`jump_list`) |
 | `ui-state.toml` | ツリー・隠しファイル・サイズ列・更新日時列の表示状態、ソート条件 |
+| `remote_profiles.toml` | SFTP 接続プロファイル一覧 (接続先ホスト、ポート、ユーザー名、初期ディレクトリ等) |
+| `known_hosts.toml` | SFTP 接続先の SSH ホスト鍵 (SHA256 フィンガープリント) キャッシュ |
+
+> **セキュリティについて**: SFTP のログインパスワードを保存する場合、平文の設定ファイルには一切書き込まれず、Windows OS 標準の **Windows 資格情報マネージャー** (`Windows Credential Manager`) 内に暗号化保管されます。
 
 ---
 
 ## 3. 画面構成と基本操作
 
-画面は上から **メニューバー (`tuif  File (Alt+F)  Edit (Alt+E)  View (Alt+V)  Go (Alt+G)`)**、**パスバー (および検索バー)**、**メイン領域 (Drives / Tree ペイン＋マルチカラム Files ペイン)**、**ステータスバー** の4段で構成されます。
+画面は上から **メニューバー**、**パスバー (および検索バー)**、**メイン領域 (Drives / Tree ペイン＋マルチカラム Files ペイン)**、**ステータスバー** の4段で構成されます。
 
 - **マルチカラム表示**: ファイル一覧はターミナルの縦幅に合わせて1列あたりの行数が自動調整され、収まらない項目は右側の列へ折り返して表示されます。
 - **親フォルダ移動時のカーソル保持**: 下位フォルダから上位フォルダへ移動した際、直前まで入っていた下位フォルダの位置にカーソルが保持されます。
@@ -43,8 +73,8 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 
 | 操作 | 既定のキー | アクションID (`config.toml`) |
 |---|---|---|
-| 上へ移動 | `k` または `↑` | `move_up` |
-| 下へ移動 | `j` または `↓` | `move_down` |
+| 上へ移動 | `k` または `↓` | `move_up` |
+| 下へ移動 | `j` または `↑` | `move_down` |
 | 左へ移動 (一覧:左の列へ / ツリー:折畳・親フォルダへ) | `h` または `←` | `move_left` |
 | 右へ移動 (一覧:右の列へ / ツリー:展開・子フォルダへ) | `l` または `→` | `move_right` |
 | 先頭へ移動 | `gg` または `Home` | `move_top` |
@@ -78,6 +108,7 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | サイズ列の表示切替 | `Ctrl+Shift+S` | `toggle_size` |
 | 更新日時列の表示切替 | `Ctrl+Shift+T` | `toggle_time` |
 | アクションメニュー | `;` または `F9` | `action_menu` |
+| SFTP 接続マネージャー | `Ctrl+S` | `connection_manager` |
 | メニューバーを開く | `F10` または `Alt+F` / `Alt+E` / `Alt+V` / `Alt+G` | (固定) |
 | 終了 | `q` または `Ctrl+Q` | `exit` |
 
@@ -94,6 +125,7 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | **ドライブ・ツリー (`Drives / Tree`)** | `▸` / `▾` を左クリック | フォルダの展開・折畳を切り替え |
 | **ドライブ・ツリー (`Drives / Tree`)** | フォルダ名を左クリック | そのフォルダを開く（ダブルクリックで展開・折畳も切替） |
 | **ドライブ・ツリー (`Drives / Tree`)** | 右クリック | 対象ツリーフォルダにフォーカスを合わせ、**アクションメニュー**を表示（Files でディレクトリを右クリックしたときと同じ挙動） |
+| **リモートツリー (`☁ [SFTP] ...`)** | 左クリック / 右クリック | ローカルツリーと全く同じ操作でリモートフォルダの開閉・展開・アクションメニュー起動が可能 |
 | **メニューバー / パスバー** | 左クリック | 各メニュー (`File` / `Edit` / `View` / `Go`) の展開、またはパス直接入力欄を開く |
 | **ポップアップメニュー内** | マウスホバー / 左クリック | 項目のハイライト移動 / クリックした機能を実行（枠外クリックで閉じる） |
 
@@ -121,16 +153,50 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 
 ## 5. 外部 CUI / GUI ツール連携
 
-既定では以下の6つの外部ツールが登録されています（右クリックのアクションメニューやショートカットキーから起動可能）。
-- **`[CUI]` ツール**: 起動時に TUI を一時サスペンドしてターミナルを引き渡し、ツール終了後に元の `tuif` 画面へ復帰します。
-- **`[GUI]` ツール**: `tuif` の画面を維持したままバックグラウンド（非ブロッキング）で別ウィンドウとして起動します。
+右クリックのアクションメニューやショートカットキーから外部ツールをワンタッチで起動できます。
 
-1. **`[CUI]` Open PowerShell Here (`Ctrl+Alt+C`)**: `pwsh.exe -NoLogo -WorkingDirectory {dir}`
-2. **`[CUI]` Edit with Neovim (`Ctrl+Alt+V`)**: `nvim.exe {path}`
-3. **`[CUI]` Git UI (lazygit) (`Ctrl+Alt+G`)**: `lazygit.exe -p {dir}`
-4. **`[CUI]` View with bat (`Ctrl+Alt+B`)**: `bat.exe --paging=always --color=always {path}`
-5. **`[GUI]` Open VSCode (`Ctrl+Alt+O`)**: `Code.exe {path}`
-6. **`[GUI]` Open Explorer (`Ctrl+Alt+E`)**: フォルダ選択時は `explorer.exe {dir}`、ファイル選択時は `explorer.exe /select,{path}`
+### 5.1 登録済みツール一覧
+
+- **`[CUI]` ツール**: 起動時に TUI を一時サスペンドしてターミナルを引き渡し、ツール終了後に元の `tuif` 画面へ自動復帰します。
+- **`[GUI]` ツール**: `tuif` の画面を維持したままバックグラウンド（非ブロッキング）で別ウィンドウとして即座に起動します。
+
+| 種類 | ツール名 | 既定ショートカット | 起動コマンドと引数 |
+|---|---|---|---|
+| `[CUI]` | **Open PowerShell Here** | `Ctrl+Alt+C` | `pwsh.exe -NoLogo -WorkingDirectory {dir}` |
+| `[CUI]` | **Edit with Neovim** | `Ctrl+Alt+V` | `nvim.exe {path}` |
+| `[CUI]` | **Git UI (lazygit)** | `Ctrl+Alt+G` | `lazygit.exe -p {dir}` |
+| `[CUI]` | **View with bat** | `Ctrl+Alt+B` | `bat.exe --paging=always --color=always {path}` |
+| `[GUI]` | **Open VSCode** | `Ctrl+Alt+O` | `Code.exe {path}` |
+| `[GUI]` | **Open Explorer** | `Ctrl+Alt+E` | `explorer.exe {dir}` (フォルダ選択時) / `explorer.exe /select,{path}` (ファイル選択時) |
+
+### 5.2 外部アプリのカスタマイズ (`config.toml`)
+
+`%APPDATA%\cuifiler\config.toml` に `[[external_apps]]` セクションを追加・編集することで、任意のツールを追加・変更できます。
+
+```toml
+# 例: GUI テキストエディタ (notepad++) を追加
+[[external_apps]]
+name = "Notepad++"
+program = "notepad++.exe"
+args = ["{path}"]
+key_chord = "Ctrl+Alt+N"
+is_gui = true
+
+# 例: Python スクリプト実行
+[[external_apps]]
+name = "Run Python"
+program = "python.exe"
+args = ["{path}"]
+key_chord = "Ctrl+Alt+P"
+is_gui = false
+```
+
+- **置換プレースホルダー**:
+  - `{path}`: 選択中項目のフルパス（フォルダ選択時はフォルダパス）
+  - `{dir}`: 現在表示中のフォルダパス
+- **`is_gui`**:
+  - `true`: バックグラウンドで非ブロッキング起動（`tuif` の画面を保持）
+  - `false`: TUI をサスペンドしてフォアグラウンド実行（終了後に自動復帰）
 
 ---
 
@@ -176,25 +242,30 @@ Set-Alias -Name tf -Value Invoke-Tuif
 | `Esc` または `q` | 接続マネージャーを閉じる |
 
 #### プロファイル設定項目
-- **Profile Name**: 一覧やツリーに表示する任意の表示名
+- **Profile Name**: 一覧やツリーに表示する任意の表示名 (例: `Ubuntu VM`)
 - **Host / IP**: 接続先サーバーのホスト名または IP アドレス
-- **Port**: SSH/SFTP ポート番号 (既定: 22)
+- **Port**: SSH/SFTP ポート番号 (既定: `22`)
 - **Username**: ログインユーザー名
 - **Password**: ログインパスワード (手入力。保存しない場合は空欄で接続時にプロンプト入力)
 - **Save Password**: Windows 資格情報マネージャー (`Windows Credential Manager`) にパスワードを暗号化保存するかどうかの切り替え (`Space` キーでトグル)
 - **Initial Dir**: 接続時に開く初期ディレクトリ (空欄時はサーバーのホームディレクトリ)
 
-> **セキュリティについて**: パスワードを保存する場合、平文の設定ファイルには一切書き込まれず、Windows OS 標準の **Windows 資格情報マネージャー** 内にセキュアに保管されます。
+---
 
 ### 7.2 ホスト鍵の確認 (TOFU: Trust on First Use)
 
-初めて接続するサーバーの場合、ホスト鍵の SHA256 フィンガープリント確認ダイアログが表示されます。`y` または `Enter` を押すと、`%APPDATA%\cuifiler\known_hosts.toml` に安全に登録され、次回以降の接続時に自動検証されます（未知の鍵変更時は警告ブロックされます）。
+初めて接続するサーバーの場合、ホスト鍵の SHA256 フィンガープリント確認ダイアログが表示されます。
+`y` または `Enter` を押すと、`%APPDATA%\cuifiler\known_hosts.toml` に安全に登録され、次回以降の接続時に自動検証されます（未知の鍵変更時は警告ブロックされます）。
+
+---
 
 ### 7.3 Drives / Tree ペインでのリモートツリー表示
 
 接続が完了すると、左側の **`Drives / Tree`** ペインに `☁ [SFTP] <プロファイル名>` のリモートツリーノードが追加されます。
 - `l` キーまたはマウスクリックで展開・折畳が可能で、サーバー上のディレクトリ階層をローカルドライブと同様にシームレスに行き来できます。
 - パスバーには `sftp://<user>@<host>/<path>` 形式でリモートパスが表示されます。
+
+---
 
 ### 7.4 ローカル ⇔ リモート間のファイル転送・遠隔操作
 
@@ -209,3 +280,73 @@ Set-Alias -Name tf -Value Invoke-Tuif
   - `d` (`Delete`): リモートファイル・フォルダの削除
 - **リモートファイルの内蔵ビューア表示**: リモート上のテキストファイルや Markdown ファイルで `Enter` を押すと、一時フォルダへ自動ダウンロードされ、シンタックスハイライト付き内蔵ビューア（または `leaf` による Markdown プレビュー）で即座に閲覧できます。
 
+---
+
+### 7.5 ファイル転送の進捗表示と中断 (プログレスバー & キャンセル)
+
+ファイルやディレクトリのアップロード・ダウンロード・リモート間複製を実行すると、転送プログレスモーダルが画面中央にポップアップ表示されます。
+
+```text
+┌ Transferring files... ───────────────────────────────────────────┐
+│ File: large_data.iso                                             │
+│ [█████████████████████████████████████             ] 35 MB / 100 MB (35%) │
+│                                                                  │
+│ Total: 2 / 5 files (150 MB / 450 MB)                             │
+│ [██████████████████████                           ] 33%          │
+│  Press [Esc] to cancel                                           │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+- **2 段階プログレスバー**:
+  - **上部バー (Current File)**: 現在転送している個々のファイルの転送バイト数・合計サイズ・パーセントを表示します。
+  - **下部バー (Overall)**: 事前スキャンに基づき、バッチ全体の完了ファイル数・累積転送バイト数・全体進捗率を表示します。
+- **非同期・ノンプリーエンプティブ実行**: ファイル転送はバックグラウンドスレッドで実行されるため、UIの描画やレスポンスがフリーズすることなく滑らかに進捗が更新されます。
+- **`Esc` キーによる中断 (Cancel)**:
+  - 転送中に `Esc` キーを押すと即座に転送中止フラグがセットされ、`Cancelling transfer... Please wait` と表示された後、安全に転送が中断されます。
+  - 中断時には、途中まで書き込まれたローカルまたはリモートの不完全な一時ファイルが自動的にクリーンアップ（削除）されます。
+
+---
+
+### 7.6 同名ファイルの衝突確認ダイアログ (衝突解決)
+
+ファイル転送（ローカル ⇔ リモート、ローカル同士、リモート間）の実行時、転送先に同名のファイルが既に存在する場合、確認ダイアログがポップアップ表示されます。
+
+```text
+┌ Confirm File Replace ─────────────────────────────────────────────┐
+│ Destination file already exists:                                   │
+│   important_report.pdf                                            │
+│                                                                   │
+│  [ Overwrite(o) ]  Skip(s)   OverwriteAll(a)   SkipAll(k)   Cancel(Esc) │
+│ Left/Right/Tab: Select | Enter: Confirm | o/s/a/k/Esc: Quick key  │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+#### 選択可能なアクション
+- **`Overwrite (o)`**: 対象のファイルを上書きします。
+- **`Skip (s)`**: 対象のファイルの転送をスキップし、次のファイルへ進みます。
+- **`Overwrite All (a)`**: 以降に重複する同名ファイルも含め、すべて確認なしで上書きします。
+- **`Skip All (k)`**: 以降に重複する同名ファイルも含め、すべて確認なしでスキップします。
+- **`Cancel (Esc)`**: 転送操作全体を中止します。
+
+#### 操作キー
+- `←` / `→` または `Tab` / `Shift+Tab`: ボタンのフォーカス移動
+- `Enter`: 選択中のアクションを実行
+- `o` / `s` / `a` / `k` / `Esc` (または `c`): ショートカットキーによる即時決定
+
+---
+
+## 8. トラブルシューティング / FAQ
+
+### Q. SFTP 接続時に `Authentication failed` になる
+- ユーザー名およびパスワードが正しいか確認してください。
+- 接続先サーバーの SSH 設定 (`/etc/ssh/sshd_config`) で、パスワード認証 (`PasswordAuthentication yes`) またはキーボードインタラクティブ認証が許可されているか確認してください。
+- 接続先で SFTP サブシステム (`Subsystem sftp /usr/lib/openssh/sftp-server`) が有効になっているか確認してください。
+
+### Q. 保存したパスワードを削除・リセットしたい
+- `Ctrl+S` で接続マネージャーを開き、対象プロファイルで `e` を押してパスワード欄を空にして保存するか、Windows のスタートメニューから「**資格情報マネージャー**」を開き、`Windows 資格情報` の一覧から `tuif-sftp:<プロファイルID>` を削除してください。
+
+### Q. サーバーの再インストール等で `HOST KEY MISMATCH` 警告が出る
+- サーバーの鍵が更新された正当な理由がある場合は、`%APPDATA%\cuifiler\known_hosts.toml` をテキストエディタで開き、該当ホストのエントリを削除してから再接続してください（新しいホスト鍵の登録ダイアログが表示されます）。
+
+### Q. 日本語を含むファイル名が文字化けする
+- `tuif` は UTF-8 を標準として送受信を行います。Linux サーバー側のロケールが UTF-8（例: `ja_JP.UTF-8` や `C.UTF-8`）に設定されていることを推奨します。

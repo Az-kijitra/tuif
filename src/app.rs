@@ -2,8 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use regex::RegexBuilder;
 
 use crate::config::paths;
@@ -17,6 +18,12 @@ use crate::keymap::{ActionId, KeyChord, Keymap};
 use crate::shared::schema::navigation::NavigationData;
 use crate::shared::schema::ui_state::UiStateData;
 use crate::viewer::{classify, text};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClickTarget {
+    FileItem(usize),
+    TreeItem(usize),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPane {
@@ -83,7 +90,10 @@ pub enum OverlayMode {
     Viewer {
         path: PathBuf,
         title: String,
-        lines: Vec<String>,
+        is_markdown: bool,
+        preview_mode: bool,
+        raw_lines: Vec<String>,
+        preview_lines: Option<Vec<String>>,
         scroll_y: usize,
         scroll_x: usize,
     },
@@ -104,6 +114,9 @@ pub struct AppState {
     pub visible_indices: Vec<usize>,
     pub focused_vis_idx: usize,
     pub list_rows_per_col: usize,
+    pub term_width: u16,
+    pub term_height: u16,
+    pub last_click: Option<(Instant, ClickTarget)>,
     pub selected_paths: HashSet<PathBuf>,
     pub drives: Vec<String>,
     pub expanded_dirs: HashSet<String>,
@@ -164,6 +177,9 @@ impl AppState {
             visible_indices: Vec::new(),
             focused_vis_idx: 0,
             list_rows_per_col: 20,
+            term_width: 100,
+            term_height: 28,
+            last_click: None,
             selected_paths: HashSet::new(),
             drives,
             expanded_dirs: HashSet::new(),
@@ -190,9 +206,10 @@ impl AppState {
         app
     }
 
-    /// Updates `list_rows_per_col` from the current terminal dimensions so column navigation
-    /// (`h`/`l`, `Left`/`Right`, `PageUp`/`PageDown`) matches the actual rendered column height.
-    pub fn update_viewport_size(&mut self, _term_width: u16, term_height: u16) {
+    /// Updates `list_rows_per_col`, `term_width`, and `term_height` from the current terminal dimensions.
+    pub fn update_viewport_size(&mut self, term_width: u16, term_height: u16) {
+        self.term_width = term_width;
+        self.term_height = term_height;
         let top_rows = 1 + if self.search_query.is_empty() { 1 } else { 2 };
         let status_rows = 1;
         let main_height = term_height.saturating_sub(top_rows + status_rows);
@@ -201,6 +218,16 @@ impl AppState {
     }
 
     pub fn reload_dir(&mut self) {
+        if !self.current_dir.exists() {
+            if let Some(existing) = self
+                .current_dir
+                .ancestors()
+                .find(|p| p.is_dir())
+                .map(Path::to_path_buf)
+            {
+                self.current_dir = existing;
+            }
+        }
         match query::fs_list_dir(
             &self.current_dir,
             self.ui_state.ui_show_hidden,
@@ -218,11 +245,7 @@ impl AppState {
                 self.focused_vis_idx = 0;
             }
         }
-        let cur_key = normalize_tree_key(&self.current_dir);
-        self.tree_children_cache.remove(&cur_key);
-        if let Some(parent) = self.current_dir.parent() {
-            self.tree_children_cache.remove(&normalize_tree_key(parent));
-        }
+        self.tree_children_cache.clear();
         self.rebuild_tree();
     }
 
@@ -379,7 +402,23 @@ impl AppState {
         self.entries.get(real_idx)
     }
 
+    pub fn active_target_dir(&self) -> PathBuf {
+        if self.focus_pane == FocusPane::Tree {
+            if let Some(node) = self.tree_nodes.get(self.tree_cursor) {
+                return node.path.clone();
+            }
+        }
+        self.current_dir.clone()
+    }
+
     pub fn operation_targets(&self) -> Vec<PathBuf> {
+        if self.focus_pane == FocusPane::Tree {
+            return self
+                .tree_nodes
+                .get(self.tree_cursor)
+                .map(|n| vec![n.path.clone()])
+                .unwrap_or_default();
+        }
         let visible_selected: Vec<PathBuf> = self
             .visible_indices
             .iter()
@@ -725,16 +764,17 @@ impl AppState {
                     self.status_message = "Clipboard is empty".to_string();
                     return;
                 };
+                let dest_dir = self.active_target_dir();
                 let summary = match clip.mode {
                     ClipMode::Copy => transfer::copy_batch(
                         &clip.items,
-                        &self.current_dir,
+                        &dest_dir,
                         transfer::ConflictResolution::Overwrite,
                     ),
                     ClipMode::Cut => {
                         let s = transfer::move_batch(
                             &clip.items,
-                            &self.current_dir,
+                            &dest_dir,
                             transfer::ConflictResolution::Overwrite,
                         );
                         if s.failed == 0 {
@@ -767,7 +807,15 @@ impl AppState {
                 };
             }
             ActionId::Rename => {
-                if let Some(entry) = self.focused_entry().cloned() {
+                if self.focus_pane == FocusPane::Tree {
+                    if let Some(node) = self.tree_nodes.get(self.tree_cursor).cloned() {
+                        self.overlay = OverlayMode::Input {
+                            kind: InputPromptKind::Rename { target: node.path },
+                            title: "Rename (Enter:Apply / Esc:Cancel)".to_string(),
+                            buffer: node.name,
+                        };
+                    }
+                } else if let Some(entry) = self.focused_entry().cloned() {
                     self.overlay = OverlayMode::Input {
                         kind: InputPromptKind::Rename { target: entry.path },
                         title: "Rename (Enter:Apply / Esc:Cancel)".to_string(),
@@ -816,7 +864,7 @@ impl AppState {
                 };
             }
             ActionId::JumpAdd => {
-                let p = self.current_dir.to_string_lossy().into_owned();
+                let p = self.active_target_dir().to_string_lossy().into_owned();
                 self.nav_data.jump_list.retain(|x| !x.eq_ignore_ascii_case(&p));
                 self.nav_data.jump_list.insert(0, p.clone());
                 self.save_navigation();
@@ -844,6 +892,10 @@ impl AppState {
                 };
             }
             ActionId::ZipExtract => {
+                if self.focus_pane == FocusPane::Tree {
+                    self.status_message = "Please select a .zip file in Files".to_string();
+                    return;
+                }
                 let Some(entry) = self.focused_entry().cloned() else {
                     return;
                 };
@@ -873,7 +925,13 @@ impl AppState {
         let Some(app) = self.external_apps.get(index).cloned() else {
             return;
         };
-        let target = if let Some(entry) = self.focused_entry() {
+        let target = if self.focus_pane == FocusPane::Tree {
+            if let Some(node) = self.tree_nodes.get(self.tree_cursor) {
+                LaunchTarget::from_entry(&node.path, true, &self.current_dir)
+            } else {
+                LaunchTarget::from_current_dir(&self.current_dir)
+            }
+        } else if let Some(entry) = self.focused_entry() {
             LaunchTarget::from_entry(&entry.path, entry.entry_type == EntryType::Dir, &self.current_dir)
         } else {
             LaunchTarget::from_current_dir(&self.current_dir)
@@ -895,6 +953,18 @@ impl AppState {
             }
         };
 
+        if app.is_gui {
+            match crate::external_apps::spawn_gui_nonblocking(&exe, &args, &target.dir) {
+                Ok(()) => {
+                    self.status_message = format!("Launched {}", app.name);
+                }
+                Err(e) => {
+                    self.status_message = e;
+                }
+            }
+            return;
+        }
+
         self.pending_launch = Some(PendingExternalLaunch {
             app_name: app.name,
             exe,
@@ -910,10 +980,19 @@ impl AppState {
         if let Ok(f) = std::fs::File::open(path) {
             let _ = f.take(65_536).read_to_end(&mut sample);
         }
-        match classify::decide_kind(ext.as_deref(), &sample) {
+        let kind = classify::decide_kind(ext.as_deref(), &sample);
+        match kind {
             classify::ViewerKind::Text | classify::ViewerKind::Markdown => match text::read_text(path) {
                 Ok(payload) => {
-                    let lines = crate::viewer::highlight::highlight_with_bat(path, &payload.content);
+                    let is_markdown = kind == classify::ViewerKind::Markdown;
+                    let raw_lines = crate::viewer::highlight::highlight_with_bat(path, &payload.content);
+                    let preview_lines = if is_markdown {
+                        let width = self.term_width.saturating_sub(6).max(40) as usize;
+                        crate::viewer::highlight::render_markdown_with_leaf(&payload.content, width)
+                    } else {
+                        None
+                    };
+                    let preview_mode = preview_lines.is_some();
                     let title = path
                         .file_name()
                         .and_then(|s| s.to_str())
@@ -922,7 +1001,10 @@ impl AppState {
                     self.overlay = OverlayMode::Viewer {
                         path: path.to_path_buf(),
                         title,
-                        lines,
+                        is_markdown,
+                        preview_mode,
+                        raw_lines,
+                        preview_lines,
                         scroll_y: 0,
                         scroll_x: 0,
                     };
@@ -1162,93 +1244,150 @@ impl AppState {
             OverlayMode::Viewer {
                 path,
                 title,
-                lines,
+                is_markdown,
+                mut preview_mode,
+                raw_lines,
+                preview_lines,
                 mut scroll_y,
                 mut scroll_x,
-            } => match ev.code {
-                KeyCode::Esc | KeyCode::Char('q') => self.overlay = OverlayMode::None,
-                KeyCode::Down | KeyCode::Char('j') => {
-                    scroll_y = (scroll_y + 1).min(lines.len().saturating_sub(1));
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
+            } => {
+                let active_len = if preview_mode {
+                    preview_lines
+                        .as_ref()
+                        .map(|v| v.len())
+                        .unwrap_or(raw_lines.len())
+                } else {
+                    raw_lines.len()
+                };
+                match ev.code {
+                    KeyCode::Esc | KeyCode::Char('q') => self.overlay = OverlayMode::None,
+                    KeyCode::Tab | KeyCode::Char('p') | KeyCode::Char('m') if is_markdown => {
+                        if let Some(ref prev) = preview_lines {
+                            preview_mode = !preview_mode;
+                            let new_len = if preview_mode { prev.len() } else { raw_lines.len() };
+                            scroll_y = scroll_y.min(new_len.saturating_sub(1));
+                            scroll_x = 0;
+                        } else {
+                            self.status_message = "leaf is not available for Markdown preview".to_string();
+                        }
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        scroll_y = (scroll_y + 1).min(active_len.saturating_sub(1));
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        scroll_y = scroll_y.saturating_sub(1);
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::PageDown | KeyCode::Char('d') if ev.code == KeyCode::PageDown || ev.modifiers.contains(KeyModifiers::CONTROL) => {
+                        scroll_y = (scroll_y + 20).min(active_len.saturating_sub(1));
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::PageUp | KeyCode::Char('u') if ev.code == KeyCode::PageUp || ev.modifiers.contains(KeyModifiers::CONTROL) => {
+                        scroll_y = scroll_y.saturating_sub(20);
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::Home | KeyCode::Char('g') => {
+                        scroll_y = 0;
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::End | KeyCode::Char('G') => {
+                        scroll_y = active_len.saturating_sub(1);
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::Right | KeyCode::Char('l') => {
+                        scroll_x = scroll_x.saturating_add(4);
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    KeyCode::Left | KeyCode::Char('h') => {
+                        scroll_x = scroll_x.saturating_sub(4);
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    _ => {}
                 }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    scroll_y = scroll_y.saturating_sub(1);
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
-                }
-                KeyCode::PageDown | KeyCode::Char('d') if ev.code == KeyCode::PageDown || ev.modifiers.contains(KeyModifiers::CONTROL) => {
-                    scroll_y = (scroll_y + 20).min(lines.len().saturating_sub(1));
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
-                }
-                KeyCode::PageUp | KeyCode::Char('u') if ev.code == KeyCode::PageUp || ev.modifiers.contains(KeyModifiers::CONTROL) => {
-                    scroll_y = scroll_y.saturating_sub(20);
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
-                }
-                KeyCode::Home | KeyCode::Char('g') => {
-                    scroll_y = 0;
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
-                }
-                KeyCode::End | KeyCode::Char('G') => {
-                    scroll_y = lines.len().saturating_sub(1);
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    scroll_x = scroll_x.saturating_add(4);
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
-                }
-                KeyCode::Left | KeyCode::Char('h') => {
-                    scroll_x = scroll_x.saturating_sub(4);
-                    self.overlay = OverlayMode::Viewer {
-                        path,
-                        title,
-                        lines,
-                        scroll_y,
-                        scroll_x,
-                    };
-                }
-                _ => {}
-            },
+            }
         }
     }
 
@@ -1308,8 +1447,13 @@ impl AppState {
             }
             InputPromptKind::Rename { target } => {
                 if !trimmed.is_empty() {
+                    let was_current_dir = normalize_tree_key(&self.current_dir) == normalize_tree_key(&target);
                     match rename::rename_entry(&target, trimmed) {
-                        Ok(_) => {
+                        Ok(new_path) => {
+                            if was_current_dir {
+                                self.current_dir = new_path;
+                                self.expand_ancestors_of_current_dir();
+                            }
                             self.reload_dir();
                             self.status_message = format!("Renamed to: {trimmed}");
                         }
@@ -1321,7 +1465,8 @@ impl AppState {
             }
             InputPromptKind::NewFile => {
                 if !trimmed.is_empty() {
-                    match create::create_entry(&self.current_dir, trimmed, "file") {
+                    let dest_dir = self.active_target_dir();
+                    match create::create_entry(&dest_dir, trimmed, "file") {
                         Ok(()) => {
                             self.reload_dir();
                             self.status_message = format!("Created file: {trimmed}");
@@ -1334,8 +1479,10 @@ impl AppState {
             }
             InputPromptKind::NewFolder => {
                 if !trimmed.is_empty() {
-                    match create::create_entry(&self.current_dir, trimmed, "dir") {
+                    let dest_dir = self.active_target_dir();
+                    match create::create_entry(&dest_dir, trimmed, "dir") {
                         Ok(()) => {
+                            self.expanded_dirs.insert(normalize_tree_key(&dest_dir));
                             self.reload_dir();
                             self.status_message = format!("Created folder: {trimmed}");
                         }
@@ -1346,12 +1493,20 @@ impl AppState {
                 }
             }
             InputPromptKind::ZipCreate => {
-                let targets: Vec<String> = self
-                    .operation_targets()
+                let target_paths = self.operation_targets();
+                let base_dir_path = if self.focus_pane == FocusPane::Tree {
+                    target_paths
+                        .first()
+                        .and_then(|p| p.parent().map(Path::to_path_buf))
+                        .unwrap_or_else(|| self.current_dir.clone())
+                } else {
+                    self.current_dir.clone()
+                };
+                let targets: Vec<String> = target_paths
                     .into_iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect();
-                let base_dir = self.current_dir.to_string_lossy().into_owned();
+                let base_dir = base_dir_path.to_string_lossy().into_owned();
                 let hooks = crate::archive::create::CreateHooks::none();
                 match crate::archive::guarded::create_guarded(&targets, trimmed, &base_dir, true, &hooks) {
                     Ok(res) => {
@@ -1381,5 +1536,577 @@ impl AppState {
             }
             InputPromptKind::ConfirmDelete { .. } => {}
         }
+    }
+
+    fn execute_action_menu_item(&mut self, cursor: usize) {
+        match cursor {
+            0 => self.execute_action(ActionId::Open),
+            1 => self.execute_action(ActionId::Copy),
+            2 => self.execute_action(ActionId::Cut),
+            3 => self.execute_action(ActionId::Paste),
+            4 => self.execute_action(ActionId::Rename),
+            5 => self.execute_action(ActionId::Delete),
+            6 => self.execute_action(ActionId::NewFile),
+            7 => self.execute_action(ActionId::NewFolder),
+            8 => self.execute_action(ActionId::ZipCreate),
+            9 => self.execute_action(ActionId::ZipExtract),
+            ext_idx => self.trigger_external_app(ext_idx - 10),
+        }
+    }
+
+    fn check_and_record_click(&mut self, target: ClickTarget) -> bool {
+        let now = Instant::now();
+        let is_double = match self.last_click {
+            Some((prev_time, prev_target)) => {
+                prev_target == target && now.duration_since(prev_time) <= Duration::from_millis(500)
+            }
+            None => false,
+        };
+        if is_double {
+            self.last_click = None;
+        } else {
+            self.last_click = Some((now, target));
+        }
+        is_double
+    }
+
+    pub fn handle_mouse_event(&mut self, ev: MouseEvent) {
+        let area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: self.term_width,
+            height: self.term_height,
+        };
+
+        if self.overlay != OverlayMode::None {
+            self.handle_overlay_mouse(ev, area);
+            return;
+        }
+
+        // Top menu bar (row 0)
+        if ev.row == 0 {
+            if ev.kind == MouseEventKind::Down(MouseButton::Left) {
+                if let Some(cat_idx) = hit_test_menubar_category(ev.column) {
+                    self.overlay = OverlayMode::MenuBar {
+                        cat_idx,
+                        item_idx: 0,
+                    };
+                }
+            }
+            return;
+        }
+
+        let (path_bar_rect, tree_rect, file_list_rect) = crate::tui::main_panes_geometry(
+            area,
+            !self.search_query.is_empty(),
+            self.ui_state.ui_show_tree,
+        );
+
+        // Path / Search bar
+        if ev.row >= path_bar_rect.y && ev.row < path_bar_rect.y + path_bar_rect.height {
+            if ev.kind == MouseEventKind::Down(MouseButton::Left) {
+                if ev.row == path_bar_rect.y {
+                    self.execute_action(ActionId::FocusPath);
+                } else {
+                    self.execute_action(ActionId::Search);
+                }
+            }
+            return;
+        }
+
+        // Drives / Tree pane
+        if let Some(t_rect) = tree_rect {
+            if ev.column >= t_rect.x
+                && ev.column < t_rect.x + t_rect.width
+                && ev.row >= t_rect.y
+                && ev.row < t_rect.y + t_rect.height
+            {
+                match ev.kind {
+                    MouseEventKind::ScrollUp => {
+                        self.focus_pane = FocusPane::Tree;
+                        self.tree_cursor = self.tree_cursor.saturating_sub(3);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        self.focus_pane = FocusPane::Tree;
+                        if !self.tree_nodes.is_empty() {
+                            self.tree_cursor =
+                                (self.tree_cursor + 3).min(self.tree_nodes.len() - 1);
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        self.focus_pane = FocusPane::Tree;
+                        if ev.row > t_rect.y
+                            && ev.row < t_rect.y + t_rect.height.saturating_sub(1)
+                            && ev.column > t_rect.x
+                            && ev.column < t_rect.x + t_rect.width.saturating_sub(1)
+                        {
+                            let page_size = t_rect.height.saturating_sub(2).max(1) as usize;
+                            let start_offset = (self.tree_cursor / page_size) * page_size;
+                            let clicked_idx = start_offset + (ev.row - (t_rect.y + 1)) as usize;
+                            if let Some(node) = self.tree_nodes.get(clicked_idx).cloned() {
+                                self.tree_cursor = clicked_idx;
+                                let rel_x = (ev.column - (t_rect.x + 1)) as usize;
+                                let is_double =
+                                    self.check_and_record_click(ClickTarget::TreeItem(clicked_idx));
+                                let clicked_caret = rel_x < node.depth * 2 + 2;
+                                if clicked_caret || is_double {
+                                    let key = normalize_tree_key(&node.path);
+                                    if node.expanded {
+                                        self.expanded_dirs.remove(&key);
+                                    } else {
+                                        self.tree_children_cache.remove(&key);
+                                        self.expanded_dirs.insert(key);
+                                    }
+                                    self.rebuild_tree();
+                                }
+                                if !clicked_caret {
+                                    self.navigate_to(node.path);
+                                }
+                            }
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        self.focus_pane = FocusPane::Tree;
+                        if ev.row > t_rect.y
+                            && ev.row < t_rect.y + t_rect.height.saturating_sub(1)
+                            && ev.column > t_rect.x
+                            && ev.column < t_rect.x + t_rect.width.saturating_sub(1)
+                        {
+                            let page_size = t_rect.height.saturating_sub(2).max(1) as usize;
+                            let start_offset = (self.tree_cursor / page_size) * page_size;
+                            let clicked_idx = start_offset + (ev.row - (t_rect.y + 1)) as usize;
+                            if clicked_idx < self.tree_nodes.len() {
+                                self.tree_cursor = clicked_idx;
+                            }
+                        }
+                        self.overlay = OverlayMode::ActionMenu { cursor: 0 };
+                    }
+                    _ => {}
+                }
+                return;
+            }
+        }
+
+        // File List pane (Windows Explorer-style interaction)
+        if ev.column >= file_list_rect.x
+            && ev.column < file_list_rect.x + file_list_rect.width
+            && ev.row >= file_list_rect.y
+            && ev.row < file_list_rect.y + file_list_rect.height
+        {
+            match ev.kind {
+                MouseEventKind::ScrollUp => {
+                    self.focus_pane = FocusPane::FileList;
+                    self.focused_vis_idx = self.focused_vis_idx.saturating_sub(3);
+                }
+                MouseEventKind::ScrollDown => {
+                    self.focus_pane = FocusPane::FileList;
+                    if !self.visible_indices.is_empty() {
+                        self.focused_vis_idx =
+                            (self.focused_vis_idx + 3).min(self.visible_indices.len() - 1);
+                    }
+                }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    self.focus_pane = FocusPane::FileList;
+                    if let Some(vis_idx) = crate::tui::hit_test_file_list(
+                        file_list_rect,
+                        self.visible_indices.len(),
+                        self.focused_vis_idx,
+                        self.ui_state.ui_show_size,
+                        self.ui_state.ui_show_time,
+                        ev.column,
+                        ev.row,
+                    ) {
+                        let prev_idx = self.focused_vis_idx;
+                        self.focused_vis_idx = vis_idx;
+                        if ev.modifiers.contains(KeyModifiers::CONTROL) {
+                            self.last_click = None;
+                            if let Some(entry) = self.focused_entry().cloned() {
+                                if !self.selected_paths.remove(&entry.path) {
+                                    self.selected_paths.insert(entry.path);
+                                }
+                            }
+                        } else if ev.modifiers.contains(KeyModifiers::SHIFT) {
+                            self.last_click = None;
+                            let lo = prev_idx.min(vis_idx);
+                            let hi = prev_idx.max(vis_idx);
+                            for i in lo..=hi {
+                                if let Some(&real_idx) = self.visible_indices.get(i) {
+                                    if let Some(e) = self.entries.get(real_idx) {
+                                        self.selected_paths.insert(e.path.clone());
+                                    }
+                                }
+                            }
+                        } else {
+                            let is_double =
+                                self.check_and_record_click(ClickTarget::FileItem(vis_idx));
+                            if is_double {
+                                self.execute_action(ActionId::Open);
+                            } else {
+                                self.selected_paths.clear();
+                            }
+                        }
+                    } else {
+                        self.last_click = None;
+                        self.selected_paths.clear();
+                    }
+                }
+                MouseEventKind::Down(MouseButton::Right) => {
+                    self.focus_pane = FocusPane::FileList;
+                    self.last_click = None;
+                    if let Some(vis_idx) = crate::tui::hit_test_file_list(
+                        file_list_rect,
+                        self.visible_indices.len(),
+                        self.focused_vis_idx,
+                        self.ui_state.ui_show_size,
+                        self.ui_state.ui_show_time,
+                        ev.column,
+                        ev.row,
+                    ) {
+                        self.focused_vis_idx = vis_idx;
+                        if let Some(entry) = self.focused_entry() {
+                            if !self.selected_paths.is_empty()
+                                && !self.selected_paths.contains(&entry.path)
+                            {
+                                self.selected_paths.clear();
+                            }
+                        }
+                    }
+                    self.overlay = OverlayMode::ActionMenu { cursor: 0 };
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn handle_overlay_mouse(&mut self, ev: MouseEvent, area: ratatui::layout::Rect) {
+        match self.overlay.clone() {
+            OverlayMode::None => {}
+            OverlayMode::Input { .. } => {
+                if ev.kind == MouseEventKind::Down(MouseButton::Left)
+                    || ev.kind == MouseEventKind::Down(MouseButton::Right)
+                {
+                    let (popup, _, _) = crate::tui::popup_list_geometry(area, 1, 0);
+                    if ev.column < popup.x
+                        || ev.column >= popup.x + popup.width
+                        || ev.row < popup.y
+                        || ev.row >= popup.y + popup.height
+                    {
+                        self.overlay = OverlayMode::None;
+                    }
+                }
+            }
+            OverlayMode::ActionMenu { mut cursor } => {
+                let total = 10 + self.external_apps.len();
+                let (popup, start_offset, page_size) =
+                    crate::tui::popup_list_geometry(area, total, cursor);
+                let in_inner = ev.column > popup.x
+                    && ev.column < popup.x + popup.width.saturating_sub(1)
+                    && ev.row > popup.y
+                    && ev.row < popup.y + popup.height.saturating_sub(1);
+
+                match ev.kind {
+                    MouseEventKind::ScrollUp => {
+                        cursor = cursor.saturating_sub(1);
+                        self.overlay = OverlayMode::ActionMenu { cursor };
+                    }
+                    MouseEventKind::ScrollDown => {
+                        cursor = (cursor + 1).min(total.saturating_sub(1));
+                        self.overlay = OverlayMode::ActionMenu { cursor };
+                    }
+                    MouseEventKind::Moved if in_inner => {
+                        let rel_y = (ev.row - (popup.y + 1)) as usize;
+                        let idx = start_offset + rel_y;
+                        if idx < total && rel_y < page_size {
+                            self.overlay = OverlayMode::ActionMenu { cursor: idx };
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if in_inner {
+                            let rel_y = (ev.row - (popup.y + 1)) as usize;
+                            let idx = start_offset + rel_y;
+                            if idx < total && rel_y < page_size {
+                                self.overlay = OverlayMode::None;
+                                self.execute_action_menu_item(idx);
+                            }
+                        } else {
+                            self.overlay = OverlayMode::None;
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        self.overlay = OverlayMode::None;
+                    }
+                    _ => {}
+                }
+            }
+            OverlayMode::SortMenu { mut cursor } => {
+                const SORT_OPTIONS: &[(&str, &str, &str)] = &[
+                    ("name", "asc", "Name (Asc)"),
+                    ("name", "desc", "Name (Desc)"),
+                    ("size", "asc", "Size (Asc)"),
+                    ("size", "desc", "Size (Desc)"),
+                    ("type", "asc", "Type (Asc)"),
+                    ("type", "desc", "Type (Desc)"),
+                    ("modified", "asc", "Modified (Asc)"),
+                    ("modified", "desc", "Modified (Desc)"),
+                ];
+                let total = SORT_OPTIONS.len();
+                let (popup, start_offset, page_size) =
+                    crate::tui::popup_list_geometry(area, total, cursor);
+                let in_inner = ev.column > popup.x
+                    && ev.column < popup.x + popup.width.saturating_sub(1)
+                    && ev.row > popup.y
+                    && ev.row < popup.y + popup.height.saturating_sub(1);
+
+                match ev.kind {
+                    MouseEventKind::ScrollUp => {
+                        cursor = cursor.saturating_sub(1);
+                        self.overlay = OverlayMode::SortMenu { cursor };
+                    }
+                    MouseEventKind::ScrollDown => {
+                        cursor = (cursor + 1).min(total - 1);
+                        self.overlay = OverlayMode::SortMenu { cursor };
+                    }
+                    MouseEventKind::Moved if in_inner => {
+                        let rel_y = (ev.row - (popup.y + 1)) as usize;
+                        let idx = start_offset + rel_y;
+                        if idx < total && rel_y < page_size {
+                            self.overlay = OverlayMode::SortMenu { cursor: idx };
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if in_inner {
+                            let rel_y = (ev.row - (popup.y + 1)) as usize;
+                            let idx = start_offset + rel_y;
+                            if idx < total && rel_y < page_size {
+                                let (k, o, label) = SORT_OPTIONS[idx];
+                                self.ui_state.sort_key = k.to_string();
+                                self.ui_state.sort_order = o.to_string();
+                                self.save_ui_state();
+                                self.overlay = OverlayMode::None;
+                                self.reload_dir();
+                                self.status_message = format!("Sorted by: {label}");
+                            }
+                        } else {
+                            self.overlay = OverlayMode::None;
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        self.overlay = OverlayMode::None;
+                    }
+                    _ => {}
+                }
+            }
+            OverlayMode::ListPopup {
+                title,
+                items,
+                mut cursor,
+                is_jump_list,
+            } => {
+                let total = items.len().max(1);
+                let (popup, start_offset, page_size) =
+                    crate::tui::popup_list_geometry(area, total, cursor);
+                let in_inner = ev.column > popup.x
+                    && ev.column < popup.x + popup.width.saturating_sub(1)
+                    && ev.row > popup.y
+                    && ev.row < popup.y + popup.height.saturating_sub(1);
+
+                match ev.kind {
+                    MouseEventKind::ScrollUp => {
+                        cursor = cursor.saturating_sub(1);
+                        self.overlay = OverlayMode::ListPopup {
+                            title,
+                            items,
+                            cursor,
+                            is_jump_list,
+                        };
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if !items.is_empty() {
+                            cursor = (cursor + 1).min(items.len() - 1);
+                        }
+                        self.overlay = OverlayMode::ListPopup {
+                            title,
+                            items,
+                            cursor,
+                            is_jump_list,
+                        };
+                    }
+                    MouseEventKind::Moved if in_inner && !items.is_empty() => {
+                        let rel_y = (ev.row - (popup.y + 1)) as usize;
+                        let idx = start_offset + rel_y;
+                        if idx < items.len() && rel_y < page_size {
+                            self.overlay = OverlayMode::ListPopup {
+                                title,
+                                items,
+                                cursor: idx,
+                                is_jump_list,
+                            };
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if in_inner {
+                            let rel_y = (ev.row - (popup.y + 1)) as usize;
+                            let idx = start_offset + rel_y;
+                            self.overlay = OverlayMode::None;
+                            if let Some(target_str) = items.get(idx) {
+                                self.navigate_to(PathBuf::from(target_str));
+                            }
+                        } else {
+                            self.overlay = OverlayMode::None;
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        self.overlay = OverlayMode::None;
+                    }
+                    _ => {}
+                }
+            }
+            OverlayMode::MenuBar {
+                cat_idx,
+                mut item_idx,
+            } => {
+                if ev.row == 0 {
+                    if let Some(new_cat) = hit_test_menubar_category(ev.column) {
+                        if ev.kind == MouseEventKind::Down(MouseButton::Left) {
+                            if new_cat == cat_idx {
+                                self.overlay = OverlayMode::None;
+                            } else {
+                                self.overlay = OverlayMode::MenuBar {
+                                    cat_idx: new_cat,
+                                    item_idx: 0,
+                                };
+                            }
+                        } else if ev.kind == MouseEventKind::Moved && new_cat != cat_idx {
+                            self.overlay = OverlayMode::MenuBar {
+                                cat_idx: new_cat,
+                                item_idx: 0,
+                            };
+                        }
+                    } else if ev.kind == MouseEventKind::Down(MouseButton::Left) {
+                        self.overlay = OverlayMode::None;
+                    }
+                    return;
+                }
+
+                let cat_counts = [8usize + self.external_apps.len(), 6, 5, 5];
+                let total = cat_counts[cat_idx];
+                let rect = crate::tui::menubar_dropdown_rect(area, cat_idx, total);
+                let in_inner = ev.column > rect.x
+                    && ev.column < rect.x + rect.width.saturating_sub(1)
+                    && ev.row > rect.y
+                    && ev.row < rect.y + rect.height.saturating_sub(1);
+
+                match ev.kind {
+                    MouseEventKind::ScrollUp => {
+                        item_idx = item_idx.saturating_sub(1);
+                        self.overlay = OverlayMode::MenuBar { cat_idx, item_idx };
+                    }
+                    MouseEventKind::ScrollDown => {
+                        item_idx = (item_idx + 1).min(total.saturating_sub(1));
+                        self.overlay = OverlayMode::MenuBar { cat_idx, item_idx };
+                    }
+                    MouseEventKind::Moved if in_inner => {
+                        let idx = (ev.row - (rect.y + 1)) as usize;
+                        if idx < total {
+                            self.overlay = OverlayMode::MenuBar {
+                                cat_idx,
+                                item_idx: idx,
+                            };
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if in_inner {
+                            let idx = (ev.row - (rect.y + 1)) as usize;
+                            if idx < total {
+                                self.overlay = OverlayMode::None;
+                                self.execute_menubar_item(cat_idx, idx);
+                            }
+                        } else {
+                            self.overlay = OverlayMode::None;
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        self.overlay = OverlayMode::None;
+                    }
+                    _ => {}
+                }
+            }
+            OverlayMode::Viewer {
+                path,
+                title,
+                is_markdown,
+                mut preview_mode,
+                raw_lines,
+                preview_lines,
+                mut scroll_y,
+                mut scroll_x,
+            } => {
+                let active_len = if preview_mode {
+                    preview_lines
+                        .as_ref()
+                        .map(|v| v.len())
+                        .unwrap_or(raw_lines.len())
+                } else {
+                    raw_lines.len()
+                };
+                match ev.kind {
+                    MouseEventKind::ScrollDown => {
+                        scroll_y = (scroll_y + 3).min(active_len.saturating_sub(1));
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    MouseEventKind::ScrollUp => {
+                        scroll_y = scroll_y.saturating_sub(3);
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    MouseEventKind::Down(MouseButton::Right) if is_markdown => {
+                        if let Some(ref prev) = preview_lines {
+                            preview_mode = !preview_mode;
+                            let new_len = if preview_mode { prev.len() } else { raw_lines.len() };
+                            scroll_y = scroll_y.min(new_len.saturating_sub(1));
+                            scroll_x = 0;
+                        }
+                        self.overlay = OverlayMode::Viewer {
+                            path,
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y,
+                            scroll_x,
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+fn hit_test_menubar_category(column: u16) -> Option<usize> {
+    match column {
+        0..=9 => Some(0),
+        10..=19 => Some(1),
+        20..=29 => Some(2),
+        30..=37 => Some(3),
+        _ => None,
     }
 }

@@ -53,6 +53,48 @@ fn try_run_bat(path: &Path, decoded_content: &str) -> Option<Vec<String>> {
     Some(text.lines().map(|l| l.replace('\t', "    ")).collect())
 }
 
+fn resolve_leaf_executable() -> Option< std::path::PathBuf > {
+    if let Some(exe) = resolve_executable("leaf.exe") {
+        return Some(exe);
+    }
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let candidate = Path::new(&local_app_data)
+            .join("Programs")
+            .join("leaf")
+            .join("leaf.exe");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Renders Markdown `decoded_content` using `leaf --inline ansi:<width>` if `leaf.exe` is available.
+pub fn render_markdown_with_leaf(decoded_content: &str, width: usize) -> Option<Vec<String>> {
+    let leaf_exe = resolve_leaf_executable()?;
+    let clamped_width = width.max(20);
+    let inline_spec = format!("ansi:{clamped_width}");
+    let mut child = Command::new(leaf_exe)
+        .args(["--inline", &inline_spec])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(decoded_content.as_bytes());
+    }
+
+    let output = child.wait_with_output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8(output.stdout).ok()?;
+    Some(text.lines().map(|l| l.replace('\t', "    ")).collect())
+}
+
 /// Parses a line containing ANSI SGR sequences (`\x1b[...m`) into styled Ratatui `Span`s,
 /// skipping the first `scroll_x` visible characters while preserving the active `Style`.
 pub fn parse_ansi_line_with_scroll(line: &str, scroll_x: usize) -> Vec<Span<'static>> {
@@ -118,9 +160,13 @@ fn apply_sgr_params(style: &mut Style, params: &str) {
             2 => *style = style.add_modifier(Modifier::DIM),
             3 => *style = style.add_modifier(Modifier::ITALIC),
             4 => *style = style.add_modifier(Modifier::UNDERLINED),
+            7 => *style = style.add_modifier(Modifier::REVERSED),
+            9 => *style = style.add_modifier(Modifier::CROSSED_OUT),
             22 => *style = style.remove_modifier(Modifier::BOLD | Modifier::DIM),
             23 => *style = style.remove_modifier(Modifier::ITALIC),
             24 => *style = style.remove_modifier(Modifier::UNDERLINED),
+            27 => *style = style.remove_modifier(Modifier::REVERSED),
+            29 => *style = style.remove_modifier(Modifier::CROSSED_OUT),
             c @ 30..=37 => style.fg = Some(standard_ansi_color(c - 30, false)),
             38 => {
                 if idx + 2 < codes.len() && codes[idx + 1] == 5 {
@@ -200,5 +246,17 @@ mod tests {
         let scrolled = parse_ansi_line_with_scroll(line, 3);
         assert_eq!(scrolled[0].content, "main");
         assert_eq!(scrolled[0].style.fg, Some(Color::Green));
+    }
+
+    #[test]
+    fn parse_leaf_inline_code_and_strikethrough_sgr() {
+        let line = "\x1b[38;2;220;150;118;48;2;38;32;31mtuif\x1b[0m \x1b[9mold\x1b[0m";
+        let spans = parse_ansi_line_with_scroll(line, 0);
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, "tuif");
+        assert_eq!(spans[0].style.fg, Some(Color::Rgb(220, 150, 118)));
+        assert_eq!(spans[0].style.bg, Some(Color::Rgb(38, 32, 31)));
+        assert_eq!(spans[2].content, "old");
+        assert!(spans[2].style.add_modifier.contains(Modifier::CROSSED_OUT));
     }
 }

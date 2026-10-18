@@ -15,15 +15,8 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
     let area = frame.area();
 
     // If fullscreen Viewer overlay is active, render it across the entire screen
-    if let OverlayMode::Viewer {
-        ref title,
-        ref lines,
-        scroll_y,
-        scroll_x,
-        ..
-    } = app.overlay
-    {
-        draw_viewer(frame, area, title, lines, scroll_y, scroll_x);
+    if matches!(app.overlay, OverlayMode::Viewer { .. }) {
+        draw_viewer(frame, area, app);
         return;
     }
 
@@ -89,7 +82,8 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
                 "Extract ZIP (Z)".to_string(),
             ];
             for ext in &app.external_apps {
-                items.push(format!("[CUI] {} ({})", ext.name, ext.key_label));
+                let tag = if ext.is_gui { "[GUI]" } else { "[CUI]" };
+                items.push(format!("{tag} {} ({})", ext.name, ext.key_label));
             }
             draw_popup_list(frame, area, "Action Menu (j/k/Enter/Esc)", &items, *cursor);
         }
@@ -381,14 +375,24 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, app: &AppState) {
     frame.render_widget(bar, area);
 }
 
-fn draw_viewer(
-    frame: &mut Frame,
-    area: Rect,
-    title: &str,
-    lines: &[String],
-    scroll_y: usize,
-    scroll_x: usize,
-) {
+fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
+    let OverlayMode::Viewer {
+        ref title,
+        is_markdown,
+        preview_mode,
+        ref raw_lines,
+        ref preview_lines,
+        scroll_y,
+        scroll_x,
+        ..
+    } = app.overlay
+    else {
+        return;
+    };
+    let (lines, active_preview) = match (preview_mode, preview_lines.as_ref()) {
+        (true, Some(prev)) => (prev.as_slice(), true),
+        _ => (raw_lines.as_slice(), false),
+    };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1)])
@@ -401,10 +405,14 @@ fn draw_viewer(
         .skip(scroll_y)
         .take(view_height)
         .map(|(idx, line)| {
-            let mut spans = vec![Span::styled(
-                format!("{:>5} │ ", idx + 1),
-                Style::default().fg(Color::DarkGray),
-            )];
+            let mut spans = if active_preview {
+                vec![Span::raw("  ")]
+            } else {
+                vec![Span::styled(
+                    format!("{:>5} │ ", idx + 1),
+                    Style::default().fg(Color::DarkGray),
+                )]
+            };
             spans.extend(crate::viewer::highlight::parse_ansi_line_with_scroll(
                 line, scroll_x,
             ));
@@ -412,13 +420,31 @@ fn draw_viewer(
         })
         .collect();
 
+    let mode_tag = if is_markdown {
+        if active_preview {
+            " [Preview: leaf]"
+        } else {
+            " [Raw: bat]"
+        }
+    } else {
+        ""
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
-        .title(format!(" Viewer: {title} (Line {}/{}) ", scroll_y + 1, lines.len().max(1)));
+        .title(format!(
+            " Viewer{mode_tag}: {title} (Line {}/{}) ",
+            scroll_y + 1,
+            lines.len().max(1)
+        ));
     frame.render_widget(Paragraph::new(visible_lines).block(block), chunks[0]);
 
-    let footer = Paragraph::new(" j/k/Up/Down:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  q/Esc:Close")
+    let footer_text = if is_markdown {
+        " j/k/Up/Down:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  p/Tab:Preview/Raw  q/Esc:Close"
+    } else {
+        " j/k/Up/Down:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  q/Esc:Close"
+    };
+    let footer = Paragraph::new(footer_text)
         .style(Style::default().fg(Color::Black).bg(Color::Cyan));
     frame.render_widget(footer, chunks[1]);
 }
@@ -434,14 +460,121 @@ fn draw_input_modal(frame: &mut Frame, area: Rect, title: &str, buffer: &str) {
     frame.render_widget(content, popup);
 }
 
-fn draw_popup_list(frame: &mut Frame, area: Rect, title: &str, items: &[String], cursor: usize) {
-    let height = (items.len() as u16 + 4).clamp(6, area.height.saturating_sub(4));
+pub fn popup_list_geometry(area: Rect, item_count: usize, cursor: usize) -> (Rect, usize, usize) {
+    let height = (item_count as u16 + 4).clamp(6, area.height.saturating_sub(4));
     let popup = centered_rect(65, height, area);
+    let page_size = popup.height.saturating_sub(2).max(1) as usize;
+    let start_offset = (cursor / page_size) * page_size;
+    (popup, start_offset, page_size)
+}
+
+pub fn menubar_dropdown_rect(area: Rect, cat_idx: usize, item_count: usize) -> Rect {
+    let x_offset = (cat_idx as u16 * 10).min(area.width.saturating_sub(42));
+    let height = (item_count as u16 + 2).min(area.height.saturating_sub(2));
+    Rect {
+        x: area.x + x_offset,
+        y: area.y + 1,
+        width: 42.min(area.width),
+        height,
+    }
+}
+
+pub fn main_panes_geometry(area: Rect, has_search: bool, show_tree: bool) -> (Rect, Option<Rect>, Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(if has_search { 2 } else { 1 }),
+            Constraint::Min(3),
+            Constraint::Length(1),
+        ])
+        .split(area);
+    let path_bar_rect = chunks[1];
+    let main_rect = chunks[2];
+    if show_tree {
+        let h_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(24), Constraint::Percentage(76)])
+            .split(main_rect);
+        (path_bar_rect, Some(h_chunks[0]), h_chunks[1])
+    } else {
+        (path_bar_rect, None, main_rect)
+    }
+}
+
+pub fn hit_test_file_list(
+    file_list_rect: Rect,
+    visible_len: usize,
+    focused_vis_idx: usize,
+    show_size: bool,
+    show_time: bool,
+    mouse_x: u16,
+    mouse_y: u16,
+) -> Option<usize> {
+    if visible_len == 0 || file_list_rect.width <= 2 || file_list_rect.height <= 2 {
+        return None;
+    }
+    let inner = Rect {
+        x: file_list_rect.x + 1,
+        y: file_list_rect.y + 1,
+        width: file_list_rect.width - 2,
+        height: file_list_rect.height - 2,
+    };
+    if mouse_x < inner.x
+        || mouse_x >= inner.x + inner.width
+        || mouse_y < inner.y
+        || mouse_y >= inner.y + inner.height
+    {
+        return None;
+    }
+
+    let rows_per_col = file_list_rect.height.saturating_sub(2).max(1) as usize;
+    let inner_width = file_list_rect.width.saturating_sub(2) as usize;
+    let mut min_col_width: usize = 24;
+    if show_size {
+        min_col_width += 10;
+    }
+    if show_time {
+        min_col_width += 20;
+    }
+    let max_fit_cols = (inner_width / min_col_width).max(1);
+    let total_cols = visible_len.div_ceil(rows_per_col).max(1);
+    let visible_cols = max_fit_cols.min(total_cols).max(1);
+
+    let focused_col = focused_vis_idx / rows_per_col;
+    let start_col = (focused_col / visible_cols) * visible_cols;
+    let end_col = (start_col + visible_cols).min(total_cols);
+    let shown_cols = (end_col - start_col).max(1);
+
+    let constraints: Vec<Constraint> = (0..shown_cols)
+        .map(|_| Constraint::Ratio(1, shown_cols as u32))
+        .collect();
+    let col_rects = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(constraints)
+        .split(inner);
+
+    let slot_idx = col_rects
+        .iter()
+        .position(|r| mouse_x >= r.x && mouse_x < r.x + r.width)?;
+    let row_in_col = (mouse_y - inner.y) as usize;
+    let vis_idx = (start_col + slot_idx) * rows_per_col + row_in_col;
+    if vis_idx < visible_len {
+        Some(vis_idx)
+    } else {
+        None
+    }
+}
+
+fn draw_popup_list(frame: &mut Frame, area: Rect, title: &str, items: &[String], cursor: usize) {
+    let (popup, start_offset, page_size) = popup_list_geometry(area, items.len(), cursor);
     frame.render_widget(Clear, popup);
 
     let list_items: Vec<ListItem> = items
         .iter()
         .enumerate()
+        .skip(start_offset)
+        .take(page_size)
         .map(|(i, item)| {
             let style = if i == cursor {
                 Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
@@ -509,14 +642,7 @@ fn draw_menubar_dropdown(
         ],
     };
 
-    let x_offset = (cat_idx as u16 * 10).min(area.width.saturating_sub(42));
-    let height = (items.len() as u16 + 2).min(area.height.saturating_sub(2));
-    let rect = Rect {
-        x: area.x + x_offset,
-        y: area.y + 1,
-        width: 42.min(area.width),
-        height,
-    };
+    let rect = menubar_dropdown_rect(area, cat_idx, items.len());
     frame.render_widget(Clear, rect);
 
     let list_items: Vec<ListItem> = items
@@ -619,5 +745,50 @@ mod tests {
         assert!(rendered_text.contains("サブフォルダ"));
         assert!(rendered_text.contains("Files ("));
         assert!(rendered_text.contains("tuif"));
+    }
+
+    #[test]
+    fn markdown_viewer_renders_leaf_preview_and_toggles_raw_mode() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("README.md"), b"# Title\n\n- item 1\n- item 2\n").unwrap();
+
+        let mut app = AppState::new(tmp.path().to_path_buf());
+        app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        match &app.overlay {
+            OverlayMode::Viewer {
+                is_markdown,
+                preview_mode,
+                preview_lines,
+                ..
+            } => {
+                assert!(*is_markdown);
+                if preview_lines.is_some() {
+                    assert!(*preview_mode);
+                }
+            }
+            other => panic!("expected Viewer overlay, got {other:?}"),
+        }
+
+        let backend = TestBackend::new(100, 28);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+
+        // Press 'p' to toggle between Preview and Raw mode when leaf is available
+        if let OverlayMode::Viewer {
+            preview_lines: Some(_),
+            preview_mode: initial_mode,
+            ..
+        } = &app.overlay
+        {
+            let before = *initial_mode;
+            app.handle_key_event(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+            if let OverlayMode::Viewer { preview_mode, .. } = &app.overlay {
+                assert_eq!(*preview_mode, !before);
+            }
+            terminal.draw(|f| draw(f, &app)).unwrap();
+        }
     }
 }

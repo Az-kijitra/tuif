@@ -1,8 +1,26 @@
-# `cuifiler` ユーザーマニュアル (0.1.0)
+# `tuif` ユーザーマニュアル (0.1.0)
 
-`cuifiler` は、Windows PowerShell 環境で動作するキーボード主体 (Vim-like) の CUI/TUI ファイラーです。
+`tuif` は、Windows PowerShell 環境で動作するキーボード主体 (Vim-like) の CUI/TUI ファイラーです。
 
-## 1. 設定フォルダー
+## 1. 前提・連携ソフトウェアのインストール方法
+
+`tuif` は単体でも動作しますが、外部 CUI ツール連携および内蔵ビューアのシンタックスハイライト・Markdown プレビュー機能を最大限活用するため、以下のツールのインストールを推奨します。
+
+PowerShell 上で以下のコマンドを実行してインストールできます。
+
+| ツール | 用途 | インストールコマンド (PowerShell) |
+|---|---|---|
+| **PowerShell 7 (`pwsh`)** | サブシェル起動 (`Ctrl+Alt+C`) | `winget install Microsoft.PowerShell` |
+| **Neovim (`nvim`)** | エディタ起動 (`Ctrl+Alt+V`) | `winget install Neovim.Neovim` |
+| **Lazygit (`lazygit`)** | Git クライアント起動 (`Ctrl+Alt+G`) | `winget install JesseDuffield.lazygit` |
+| **bat (`bat`)** | 内蔵ビューアのシンタックスハイライト / ページャ表示 (`Ctrl+Alt+B`) | `winget install sharkdp.bat` |
+| **leaf (`leaf`)** | 内蔵ビューアの Markdown プレビュー表示 | `irm https://leaf.rivolink.mg/install.ps1 \| iex` |
+
+> **補足**: インストール後、`PATH` 環境変数を反映させるために PowerShell を再起動してください（`leaf` は `%LOCALAPPDATA%\Programs\leaf\leaf.exe` にインストールされた場合、`PATH` 再読込前でも `tuif` が自動検出します）。
+
+---
+
+## 2. 設定フォルダー
 
 設定ファイルは `%APPDATA%\cuifiler` に保存されます。
 
@@ -12,22 +30,27 @@
 | `navigation.toml` | 訪問履歴とジャンプリスト |
 | `ui-state.toml` | ツリー・隠しファイル・サイズ列・更新日時列の表示状態、ソート条件 |
 
-## 2. 画面と基本操作
+---
 
-画面は上から **メニューバー**、**パスバー (および検索バー)**、**メイン領域 (ドライブツリー＋ファイル一覧)**、**ステータスバー** の4段で構成されます。
+## 3. 画面構成と基本操作
 
-### 2.1 既定のキー割り当て (Vim-like)
+画面は上から **メニューバー (`tuif  File (Alt+F)  Edit (Alt+E)  View (Alt+V)  Go (Alt+G)`)**、**パスバー (および検索バー)**、**メイン領域 (Drives / Tree ペイン＋マルチカラム Files ペイン)**、**ステータスバー** の4段で構成されます。
+
+- **マルチカラム表示**: ファイル一覧はターミナルの縦幅に合わせて1列あたりの行数が自動調整され、収まらない項目は右側の列へ折り返して表示されます。
+- **親フォルダ移動時のカーソル保持**: 下位フォルダから上位フォルダへ移動した際、直前まで入っていた下位フォルダの位置にカーソルが保持されます。
+
+### 3.1 既定のキー割り当て (Vim-like)
 
 | 操作 | 既定のキー | アクションID (`config.toml`) |
 |---|---|---|
 | 上へ移動 | `k` または `↑` | `move_up` |
 | 下へ移動 | `j` または `↓` | `move_down` |
-| 左へ移動 (一覧:10件前 / ツリー:折畳・親へ) | `h` または `←` | `move_left` |
-| 右へ移動 (一覧:10件次 / ツリー:展開・子へ) | `l` または `→` | `move_right` |
+| 左へ移動 (一覧:左の列へ / ツリー:折畳・親フォルダへ) | `h` または `←` | `move_left` |
+| 右へ移動 (一覧:右の列へ / ツリー:展開・子フォルダへ) | `l` または `→` | `move_right` |
 | 先頭へ移動 | `gg` または `Home` | `move_top` |
 | 末尾へ移動 | `G` (`Shift+G`) または `End` | `move_bottom` |
-| 前のページ | `Ctrl+U` または `PageUp` | `page_up` |
-| 次のページ | `Ctrl+D` または `PageDown` | `page_down` |
+| 前のページ (1列分上へ) | `Ctrl+U` または `PageUp` | `page_up` |
+| 次のページ (1列分下へ) | `Ctrl+D` または `PageDown` | `page_down` |
 | ツリー⇔一覧フォーカス切替 | `Tab` | (固定) |
 | 選択切替 (ツリーでは展開/折畳) | `Space` または `v` | `select_toggle` |
 | すべて選択 | `V` (`Shift+V`) または `Ctrl+A` | `select_all` |
@@ -58,11 +81,77 @@
 | メニューバーを開く | `F10` または `Alt+F` / `Alt+E` / `Alt+V` / `Alt+G` | (固定) |
 | 終了 | `q` または `Ctrl+Q` | `exit` |
 
-## 3. 外部 CUI ツール連携
+### 3.2 マウス操作 (Windows エクスプローラー互換)
 
-既定では以下の4つの CUI ツールが登録されています。起動時は TUI を一時サスペンドしてターミナルを引き渡し、ツール終了後に元のファイラー画面へ復帰します。
+| 場所 | マウス操作 | 動作 |
+|---|---|---|
+| **ファイル一覧 (`Files`)** | 左クリック | クリックした項目にカーソル移動（他の複数選択は解除） |
+| **ファイル一覧 (`Files`)** | `Ctrl` + 左クリック | クリックした項目の選択状態をトグル（複数選択） |
+| **ファイル一覧 (`Files`)** | `Shift` + 左クリック | 直前のカーソル位置からクリック位置までを範囲選択 |
+| **ファイル一覧 (`Files`)** | ダブルクリック | フォルダへ移動 / ファイルを内蔵ビューアで開く |
+| **ファイル一覧 (`Files`)** | 右クリック | 対象項目にフォーカスを合わせ、**アクションメニュー**（開く・コピー・切り取り・貼り付け・リネーム・削除・ZIP圧縮/展開・外部CUI/GUIアプリ起動）を表示 |
+| **ファイル一覧 / ツリー / ビューア** | マウスホイール上下 | カーソル移動 / スクロール |
+| **ドライブ・ツリー (`Drives / Tree`)** | `▸` / `▾` を左クリック | フォルダの展開・折畳を切り替え |
+| **ドライブ・ツリー (`Drives / Tree`)** | フォルダ名を左クリック | そのフォルダを開く（ダブルクリックで展開・折畳も切替） |
+| **ドライブ・ツリー (`Drives / Tree`)** | 右クリック | 対象ツリーフォルダにフォーカスを合わせ、**アクションメニュー**を表示（Files でディレクトリを右クリックしたときと同じ挙動） |
+| **メニューバー / パスバー** | 左クリック | 各メニュー (`File` / `Edit` / `View` / `Go`) の展開、またはパス直接入力欄を開く |
+| **ポップアップメニュー内** | マウスホバー / 左クリック | 項目のハイライト移動 / クリックした機能を実行（枠外クリックで閉じる） |
 
-1. **PowerShellを開く (`Ctrl+Alt+C`)**: `pwsh.exe -NoLogo -WorkingDirectory {dir}`
-2. **Neovimで開く (`Ctrl+Alt+V`)**: `nvim.exe {path}`
-3. **Lazygitを開く (`Ctrl+Alt+G`)**: `lazygit.exe -p {dir}`
-4. **batで表示 (`Ctrl+Alt+B`)**: `bat.exe --paging=always {path}`
+---
+
+## 4. 内蔵ビューア (テキスト・ソースコード・Markdown)
+
+ファイル一覧でテキストファイルや Markdown ファイルにカーソルを合わせて `Enter` を押すと、フルスクリーンの内蔵ビューアが開きます（UTF-8 / UTF-16LE / UTF-16BE / Shift_JIS を自動判別）。
+
+- **シンタックスハイライト (`bat` 連携)**: `bat` がインストールされている場合、言語に応じたシンタックスハイライトおよび行番号付きで表示されます。
+- **Markdown プレビュー (`leaf` 連携)**: `.md` / `.markdown` ファイルを開いた場合、既定で `leaf --inline` による整形済み Markdown プレビュー (`Viewer [Preview: leaf]`) が表示されます。ビューア内で `p` または `Tab`（または `m`）を押すと、`bat` による生テキスト表示 (`Viewer [Raw: bat]`) と即座に切り替えられます。
+
+### 4.1 内蔵ビューア内のキー操作
+
+| 操作 | キー |
+|---|---|
+| 1行スクロール (下 / 上) | `j` / `k` または `↓` / `↑` |
+| ページスクロール (下 / 上) | `Ctrl+D` / `Ctrl+U` または `PageDown` / `PageUp` |
+| 先頭 / 末尾へ移動 | `g` (または `Home`) / `G` (または `End`) |
+| 水平スクロール (左 / 右) | `h` / `l` または `←` / `→` |
+| Markdown プレビュー ⇔ Raw 表示切替 (`.md` ファイルのみ) | `p` または `Tab` または `m` |
+| ビューアを閉じる | `q` または `Esc` |
+
+---
+
+## 5. 外部 CUI / GUI ツール連携
+
+既定では以下の6つの外部ツールが登録されています（右クリックのアクションメニューやショートカットキーから起動可能）。
+- **`[CUI]` ツール**: 起動時に TUI を一時サスペンドしてターミナルを引き渡し、ツール終了後に元の `tuif` 画面へ復帰します。
+- **`[GUI]` ツール**: `tuif` の画面を維持したままバックグラウンド（非ブロッキング）で別ウィンドウとして起動します。
+
+1. **`[CUI]` Open PowerShell Here (`Ctrl+Alt+C`)**: `pwsh.exe -NoLogo -WorkingDirectory {dir}`
+2. **`[CUI]` Edit with Neovim (`Ctrl+Alt+V`)**: `nvim.exe {path}`
+3. **`[CUI]` Git UI (lazygit) (`Ctrl+Alt+G`)**: `lazygit.exe -p {dir}`
+4. **`[CUI]` View with bat (`Ctrl+Alt+B`)**: `bat.exe --paging=always --color=always {path}`
+5. **`[GUI]` Open VSCode (`Ctrl+Alt+O`)**: `Code.exe {path}`
+6. **`[GUI]` Open Explorer (`Ctrl+Alt+E`)**: フォルダ選択時は `explorer.exe {dir}`、ファイル選択時は `explorer.exe /select,{path}`
+
+---
+
+## 6. PowerShell カレントディレクトリ追従 (`cd on exit`)
+
+PowerShell の `$PROFILE` に以下のラッパー関数を追加すると、`tf` コマンドで `tuif` を起動し、`q` で終了した際に最後に開いていたフォルダへ PowerShell のカレントディレクトリが自動で移動します。
+
+```powershell
+function Invoke-Tuif {
+    $tmp = [System.IO.Path]::GetTempFileName()
+    try {
+        & "C:\Users\toshi\git\tuif\target\release\tuif.exe" --choosedir $tmp @args
+        if (Test-Path $tmp) {
+            $cwd = Get-Content -Path $tmp -Raw -Encoding UTF8
+            if (-not [string]::IsNullOrWhiteSpace($cwd) -and (Test-Path $cwd)) {
+                Set-Location -LiteralPath $cwd.Trim()
+            }
+        }
+    } finally {
+        Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+    }
+}
+Set-Alias -Name tf -Value Invoke-Tuif
+```

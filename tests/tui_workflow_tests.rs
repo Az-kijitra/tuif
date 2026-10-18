@@ -198,5 +198,139 @@ fn parent_navigation_preserves_cursor_on_child_folder() {
     assert_eq!(app.focused_entry().unwrap().name, "beta_dir");
 }
 
+#[test]
+fn mouse_explorer_workflow_left_double_and_right_click_action_menu() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir(root.join("sub_folder")).unwrap();
+    std::fs::write(root.join("alpha.txt"), b"alpha").unwrap();
+    std::fs::write(root.join("beta.txt"), b"beta").unwrap();
+
+    let mut app = AppState::new(root.to_path_buf());
+    app.ui_state = cuifiler::shared::schema::ui_state::UiStateData::default();
+    app.reload_dir();
+    app.update_viewport_size(100, 28);
+
+    // Entries sorted by name asc: 0=`alpha.txt` (row 3), 1=`beta.txt` (row 4), 2=`sub_folder` (row 5)
+    // Single left-click on row 4 (`beta.txt`) focuses `beta.txt`
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 30,
+        row: 4,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(app.focused_entry().unwrap().name, "beta.txt");
+
+    // Right-click on row 3 (`alpha.txt`) focuses `alpha.txt` and opens ActionMenu
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 30,
+        row: 3,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(app.focused_entry().unwrap().name, "alpha.txt");
+    assert_eq!(app.overlay, OverlayMode::ActionMenu { cursor: 0 });
+
+    // Click row 1 of ActionMenu ("Copy / Yank (y)") -> yanks `alpha.txt` and closes ActionMenu
+    let area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 28,
+    };
+    let (popup, _, _) = tui::popup_list_geometry(area, 10 + app.external_apps.len(), 0);
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: popup.x + 3,
+        row: popup.y + 1 + 1, // item index 1 = Copy / Yank
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(app.overlay, OverlayMode::None);
+    assert!(app.clipboard.is_some());
+
+    // Double left-click on row 5 (`sub_folder`) opens `sub_folder`
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 30,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    });
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 30,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(app.current_dir, root.join("sub_folder"));
+}
+
+#[test]
+fn tree_right_click_action_menu_and_gui_apps_workflow() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use cuifiler::app::{FocusPane, InputPromptKind};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let dir_a = root.join("alpha_dir");
+    let dir_b = root.join("beta_dir");
+    std::fs::create_dir(&dir_a).unwrap();
+    std::fs::create_dir(&dir_b).unwrap();
+
+    let mut app = AppState::new(root.to_path_buf());
+    app.ui_state = cuifiler::shared::schema::ui_state::UiStateData::default();
+    app.reload_dir();
+    app.update_viewport_size(100, 28);
+
+    // Verify GUI external apps are registered
+    assert!(app.external_apps.iter().any(|a| a.name == "Open VSCode" && a.is_gui));
+    assert!(app.external_apps.iter().any(|a| a.name == "Open Explorer" && a.is_gui));
+
+    // Find `beta_dir` in `app.tree_nodes`
+    let beta_tree_idx = app
+        .tree_nodes
+        .iter()
+        .position(|n| n.name == "beta_dir")
+        .expect("beta_dir should be visible in tree_nodes");
+
+    let page_size = (28u16.saturating_sub(3).saturating_sub(2)).max(1) as usize;
+    app.tree_cursor = (beta_tree_idx / page_size) * page_size;
+    let row_in_tree = (beta_tree_idx % page_size) as u16 + 3; // tree_rect.y = 2, inner starts at 3
+
+    // Right-click `beta_dir` in Drives / Tree pane (column 5 is inside tree_rect)
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 5,
+        row: row_in_tree,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(app.focus_pane, FocusPane::Tree);
+    assert_eq!(app.tree_cursor, beta_tree_idx);
+    assert_eq!(app.overlay, OverlayMode::ActionMenu { cursor: 0 });
+    assert_eq!(app.operation_targets(), vec![dir_b.clone()]);
+
+    // Select item 4 ("Rename (r)") in ActionMenu -> opens Rename prompt targeting `beta_dir`
+    let area = ratatui::layout::Rect {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 28,
+    };
+    let (popup, _, _) = tui::popup_list_geometry(area, 10 + app.external_apps.len(), 0);
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: popup.x + 3,
+        row: popup.y + 1 + 4, // item index 4 = Rename
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(
+        app.overlay,
+        OverlayMode::Input {
+            kind: InputPromptKind::Rename { target: dir_b },
+            title: "Rename (Enter:Apply / Esc:Cancel)".to_string(),
+            buffer: "beta_dir".to_string(),
+        }
+    );
+}
 

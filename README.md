@@ -11,7 +11,7 @@ GUI ファイラー「ReflexFiles」の画面構成・ファイル操作・ZIP �
   - `Ctrl+Alt+V`: 対象ファイル/フォルダを `nvim.exe` で開く
   - `Ctrl+Alt+G`: 対象フォルダで `lazygit.exe` を開く
   - `Ctrl+Alt+B`: 対象ファイルを `bat.exe` (`--paging=always`) で表示
-- **内蔵テキスト / Markdown ビューア**: `Enter` でテキスト・Markdown ファイルをフルスクリーン TUI ビューアで即座に閲覧 (`bat` シンタックスハイライト対応、UTF-8 / UTF-16 / Shift_JIS 自動判別)。
+- **内蔵テキスト / Markdown ビューア**: `Enter` でテキスト・Markdown ファイルをフルスクリーン TUI ビューアで即座に閲覧 (Markdown は `leaf --inline` によるプレビュー表示と `bat` の生テキスト表示を `p`/`Tab` で切替可能、UTF-8 / UTF-16 / Shift_JIS 自動判別)。
 - **ZIP 作成・展開**: `z` (圧縮) / `Z` (展開)。CP932 (Shift_JIS) エントリ名に対応。
 - **PowerShell `cd on exit` 連携**: `--choosedir <FILE>` オプションにより、`tuif` 終了時のフォルダへ PowerShell のカレントディレクトリをそのまま移動可能。
 

@@ -7,7 +7,7 @@ use std::io::{self, stdout};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -62,7 +62,7 @@ fn parse_args() -> CliArgs {
 
 fn restore_terminal() {
     let _ = disable_raw_mode();
-    let _ = execute!(stdout(), LeaveAlternateScreen);
+    let _ = execute!(stdout(), DisableMouseCapture, LeaveAlternateScreen);
 }
 
 fn main() -> io::Result<()> {
@@ -92,7 +92,7 @@ fn main() -> io::Result<()> {
 
     enable_raw_mode()?;
     let mut out = stdout();
-    execute!(out, EnterAlternateScreen)?;
+    execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(out);
     let mut terminal = Terminal::new(backend)?;
 
@@ -109,7 +109,11 @@ fn main() -> io::Result<()> {
             restore_terminal();
             let res = spawn_cui_blocking(&launch.exe, &launch.args, &launch.working_dir);
             enable_raw_mode()?;
-            execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+            execute!(
+                terminal.backend_mut(),
+                EnterAlternateScreen,
+                EnableMouseCapture
+            )?;
             terminal.clear()?;
             app.reload_dir();
             match res {
@@ -130,6 +134,9 @@ fn main() -> io::Result<()> {
                     if key_event.kind == KeyEventKind::Press {
                         app.handle_key_event(key_event);
                     }
+                }
+                Event::Mouse(mouse_event) => {
+                    app.handle_mouse_event(mouse_event);
                 }
                 Event::Resize(w, h) => {
                     app.update_viewport_size(w, h);

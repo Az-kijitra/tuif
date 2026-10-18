@@ -680,6 +680,9 @@ fn draw_menubar_dropdown(
             "History (Ctrl+Y)".to_string(),
             "Jump List (Ctrl+J)".to_string(),
             "Add to Jump List (m / Ctrl+Shift+J)".to_string(),
+            "Fuzzy Find File... (Ctrl+P / Ctrl+F)".to_string(),
+            "Fuzzy Live Grep... (Ctrl+G / F)".to_string(),
+            "Fuzzy Jump Folder... (Alt+C / f)".to_string(),
             "SFTP Connections... (Ctrl+S)".to_string(),
         ],
     };

@@ -44,6 +44,9 @@ pub enum ActionId {
     ZipExtract,
     ActionMenu,
     ConnectionManager,
+    FuzzyFindFile,
+    FuzzyLiveGrep,
+    FuzzyJumpDir,
 }
 
 impl ActionId {
@@ -83,6 +86,9 @@ impl ActionId {
         ActionId::ZipExtract,
         ActionId::ActionMenu,
         ActionId::ConnectionManager,
+        ActionId::FuzzyFindFile,
+        ActionId::FuzzyLiveGrep,
+        ActionId::FuzzyJumpDir,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -123,6 +129,9 @@ impl ActionId {
             ActionId::ZipExtract => "zip_extract",
             ActionId::ActionMenu => "action_menu",
             ActionId::ConnectionManager => "connection_manager",
+            ActionId::FuzzyFindFile => "fuzzy_find_file",
+            ActionId::FuzzyLiveGrep => "fuzzy_live_grep",
+            ActionId::FuzzyJumpDir => "fuzzy_jump_dir",
         }
     }
 
@@ -168,6 +177,9 @@ impl ActionId {
             ActionId::ZipExtract => "Shift+Z,Ctrl+Alt+X",
             ActionId::ActionMenu => "Semicolon,F9",
             ActionId::ConnectionManager => "Ctrl+S",
+            ActionId::FuzzyFindFile => "Ctrl+P,Ctrl+F",
+            ActionId::FuzzyLiveGrep => "Ctrl+G,Shift+F",
+            ActionId::FuzzyJumpDir => "Alt+C,F",
         }
     }
 }

@@ -15,7 +15,8 @@
    - [4.1 内蔵ビューア内のキー操作](#41-内蔵ビューア内のキー操作)
 5. [外部 CUI / GUI ツール連携](#5-外部-cui--gui-ツール連携)
    - [5.1 登録済みツール一覧](#51-登録済みツール一覧)
-   - [5.2 外部アプリのカスタマイズ (`config.toml`)](#52-外部アプリのカスタマイズ-configtoml)
+   - [5.2 `fzf` + `ripgrep` による高速ファジー検索・全文検索](#52-fzf--ripgrep-による高速ファジー検索全文検索)
+   - [5.3 外部アプリのカスタマイズ (`config.toml`)](#53-外部アプリのカスタマイズ-configtoml)
 6. [PowerShell カレントディレクトリ追従 (`cd on exit`)](#6-powershell-カレントディレクトリ追従-cd-on-exit)
 7. [SFTP リモート接続・ファイル管理 (WinSCP ライク機能)](#7-sftp-リモート接続ファイル管理-winscp-ライク機能)
    - [7.1 接続プロファイル管理 (`Ctrl+S`)](#71-接続プロファイル管理-ctrls)
@@ -23,13 +24,14 @@
    - [7.3 Drives / Tree ペインでのリモートツリー表示](#73-drives--tree-ペインでのリモートツリー表示)
    - [7.4 ローカル ⇔ リモート間のファイル転送・遠隔操作](#74-ローカル--リモート間のファイル転送遠隔操作)
    - [7.5 ファイル転送の進捗表示と中断 (プログレスバー & キャンセル)](#75-ファイル転送の進捗表示と中断-プログレスバー--キャンセル)
+   - [7.6 同名ファイルの衝突確認ダイアログ (衝突解決)](#76-同名ファイルの衝突確認ダイアログ-衝突解決)
 8. [トラブルシューティング / FAQ](#8-トラブルシューティング--faq)
 
 ---
 
 ## 1. 前提・連携ソフトウェアのインストール方法
 
-`tuif` は単体でもフル機能で動作しますが、外部ツール連携や内蔵ビューアのシンタックスハイライト・Markdown プレビュー機能を最大限活用するため、以下のツールのインストールを推奨します。
+`tuif` は単体でもフル機能で動作しますが、外部ツール連携や内蔵ビューアのシンタックスハイライト・Markdown プレビュー、`fzf` + `ripgrep` による高速検索機能を最大限活用するため、以下のツールのインストールを推奨します。
 
 PowerShell 上で以下のコマンドを実行してインストールできます。
 
@@ -38,7 +40,9 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | **PowerShell 7 (`pwsh`)** | サブシェル起動 (`Ctrl+Alt+C`) | `winget install Microsoft.PowerShell` |
 | **Neovim (`nvim`)** | エディタ起動 (`Ctrl+Alt+V`) | `winget install Neovim.Neovim` |
 | **Lazygit (`lazygit`)** | Git クライアント起動 (`Ctrl+Alt+G`) | `winget install JesseDuffield.lazygit` |
-| **bat (`bat`)** | 内蔵ビューアのシンタックスハイライト / ページャ表示 (`Ctrl+Alt+B`) | `winget install sharkdp.bat` |
+| **bat (`bat`)** | 内蔵ビューア・`fzf` プレビューのシンタックスハイライト / ページャ表示 (`Ctrl+Alt+B`) | `winget install sharkdp.bat` |
+| **fzf (`fzf`)** | ファイル名ファジー検索 (`Ctrl+P`) / 全文検索 (`Ctrl+G`) / フォルダジャンプ (`f`) | `winget install junegunn.fzf` |
+| **ripgrep (`rg`)** | 再帰ファイル列挙およびファイル内容の超高速全文検索 (`Ctrl+P` / `Ctrl+G`) | `winget install BurntSushi.ripgrep.MSVC` |
 | **VSCode (`Code.exe`)** | GUI エディタ起動 (`Ctrl+Alt+O`) | `winget install Microsoft.VisualStudioCode` |
 | **leaf (`leaf`)** | 内蔵ビューアの Markdown プレビュー表示 | `irm https://leaf.rivolink.mg/install.ps1 \| iex` |
 
@@ -88,7 +92,10 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | 開く (フォルダ移動 / 内蔵ビューア) | `Enter` | `open` |
 | 親フォルダーへ | `Backspace` または `-` | `go_parent` |
 | パス欄へ直接入力 | `Ctrl+L` | `focus_path` |
-| 検索フィルタ | `/` (入力中に `Ctrl+R` で正規表現切替) | `search` |
+| 検索フィルタ (現在のフォルダ内) | `/` (入力中に `Ctrl+R` で正規表現切替) | `search` |
+| 再帰ファイル名ファジー検索 (`fzf` + `rg`) | `Ctrl+P` または `Ctrl+F` | `fuzzy_find_file` |
+| ファイル内容の全文検索 (`fzf` + `rg`) | `Ctrl+G` または `F` (`Shift+F`) | `fuzzy_live_grep` |
+| サブフォルダへ一発ジャンプ (`fzf`) | `Alt+C` または `f` | `fuzzy_jump_dir` |
 | コピー (Yank) | `y` または `Ctrl+C` | `copy` |
 | 切り取り (Cut) | `x` または `Ctrl+X` | `cut` |
 | 貼り付け (Paste) | `p` または `Ctrl+V` | `paste` |
@@ -169,7 +176,19 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | `[GUI]` | **Open VSCode** | `Ctrl+Alt+O` | `Code.exe {path}` |
 | `[GUI]` | **Open Explorer** | `Ctrl+Alt+E` | `explorer.exe {dir}` (フォルダ選択時) / `explorer.exe /select,{path}` (ファイル選択時) |
 
-### 5.2 外部アプリのカスタマイズ (`config.toml`)
+### 5.2 `fzf` + `ripgrep` による高速ファジー検索・全文検索
+
+現在開いているローカルフォルダ（またはツリーで選択中のローカルフォルダ）を起点に、`fzf`、`ripgrep` (`rg`)、`bat` を組み合わせた3種類のインタラクティブ検索を実行できます（メニューバーの **`Go (Alt+G)`** からも実行可能）。
+
+| 機能 | ショートカット | 動作内容 | `Enter` 確定時の挙動 |
+|---|---|---|---|
+| **① 再帰的ファイル名ファジー検索** (`Fuzzy Find File`) | `Ctrl+P` または `Ctrl+F` | `rg --files` で配下の全ファイルを高速列挙し、右側ペインに `bat` によるシンタックスハイライト付きプレビューを表示しながら `fzf` でファジー絞り込みます。 | 選択したファイルが存在するフォルダへ移動し、**そのファイルにカーソルを合わせます**。 |
+| **② ファイル内容の全文検索** (`Fuzzy Live Grep`) | `Ctrl+G` または `F` (`Shift+F`) | `rg --line-number` で配下の全ファイルの中身を検索し、右側ペインで `bat --highlight-line` により該当行をハイライト表示しながら絞り込みます。 | 選択した該当行のファイルが存在するフォルダへ移動し、**そのファイルにカーソルを合わせます**（ステータスバーに該当行番号も表示）。 |
+| **③ サブフォルダへの一発ジャンプ** (`Fuzzy Jump Folder`) | `Alt+C` または `f` | 配下のサブディレクトリを再帰列挙し、`fzf` で目的のサブフォルダを絞り込みます。 | 選択したサブフォルダへ直接移動します。 |
+
+- **隠しファイル設定との連動**: `tuif` 側で隠しファイル表示（`.` / `Ctrl+H`）を ON にしている場合は、`--hidden` 相当で隠しファイル・隠しフォルダも検索対象に含まれます（`.git` は常に除外）。
+
+### 5.3 外部アプリのカスタマイズ (`config.toml`)
 
 `%APPDATA%\cuifiler\config.toml` に `[[external_apps]]` セクションを追加・編集することで、任意のツールを追加・変更できます。
 

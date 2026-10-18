@@ -16,7 +16,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use cuifiler::app::AppState;
-use cuifiler::external_apps::spawn_cui_blocking;
+use cuifiler::external_apps::{run_fuzzy_finder, spawn_cui_blocking};
 use cuifiler::tui;
 
 struct CliArgs {
@@ -123,6 +123,33 @@ fn main() -> io::Result<()> {
                     app.status_message = format!("Returned from '{}'", launch.app_name);
                 }
                 Err(err_msg) => {
+                    app.status_message = err_msg;
+                }
+            }
+            continue;
+        }
+
+        // Check if a fuzzy search (`fzf` + `rg` + `bat`) was requested
+        if let Some(fuzzy_req) = app.pending_fuzzy.take() {
+            restore_terminal();
+            let res = run_fuzzy_finder(&fuzzy_req);
+            enable_raw_mode()?;
+            execute!(
+                terminal.backend_mut(),
+                EnterAlternateScreen,
+                EnableMouseCapture
+            )?;
+            terminal.clear()?;
+            match res {
+                Ok(Some(sel)) => {
+                    app.apply_fuzzy_selection(sel);
+                }
+                Ok(None) => {
+                    app.reload_dir();
+                    app.status_message = "Fuzzy search cancelled".to_string();
+                }
+                Err(err_msg) => {
+                    app.reload_dir();
                     app.status_message = err_msg;
                 }
             }

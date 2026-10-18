@@ -11,7 +11,8 @@ use regex::RegexBuilder;
 
 use crate::config::paths;
 use crate::external_apps::{
-    build_args, default_external_apps, resolve_executable, ExternalAppEntry, LaunchTarget,
+    build_args, default_external_apps, resolve_executable, ExternalAppEntry, FuzzyKind,
+    FuzzySelection, LaunchTarget, PendingFuzzySearch,
 };
 use crate::fs::query::{self, Entry, EntryType};
 use crate::fs::win_drives;
@@ -284,6 +285,7 @@ pub struct AppState {
     pub status_message: String,
     pub should_quit: bool,
     pub pending_launch: Option<PendingExternalLaunch>,
+    pub pending_fuzzy: Option<PendingFuzzySearch>,
     pub remote_profiles: Vec<ConnectionProfile>,
     pub known_hosts: KnownHosts,
     pub remote_session: Option<Arc<RemoteSession>>,
@@ -372,6 +374,7 @@ impl AppState {
             status_message,
             should_quit: false,
             pending_launch: None,
+            pending_fuzzy: None,
             remote_profiles,
             known_hosts,
             remote_session: None,
@@ -1040,6 +1043,72 @@ impl AppState {
         self.record_visit();
     }
 
+    pub fn navigate_to_and_focus_entry(&mut self, target_path: &Path) {
+        let parent_dir = target_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| self.current_dir.clone());
+        self.navigate_to(parent_dir);
+        self.focus_pane = FocusPane::FileList;
+
+        let target_key = normalize_tree_key(target_path);
+        let find_idx = |app: &Self| -> Option<usize> {
+            app.visible_indices
+                .iter()
+                .position(|&real_idx| normalize_tree_key(&app.entries[real_idx].path) == target_key)
+                .or_else(|| {
+                    let name_str = target_path.file_name()?.to_string_lossy();
+                    app.visible_indices.iter().position(|&real_idx| {
+                        app.entries[real_idx].name.eq_ignore_ascii_case(&name_str)
+                    })
+                })
+        };
+
+        if let Some(vis_idx) = find_idx(self) {
+            self.focused_vis_idx = vis_idx;
+        } else if !self.ui_state.ui_show_hidden && target_path.exists() {
+            // If the target file is hidden and hidden files were off, enable show_hidden so we can focus it
+            self.ui_state.ui_show_hidden = true;
+            self.save_ui_state();
+            self.reload_dir();
+            if let Some(vis_idx) = find_idx(self) {
+                self.focused_vis_idx = vis_idx;
+            }
+        }
+    }
+
+    pub fn apply_fuzzy_selection(&mut self, sel: FuzzySelection) {
+        if sel.kind == FuzzyKind::JumpDir || sel.target_path.is_dir() {
+            self.navigate_to(sel.target_path.clone());
+            self.focus_pane = FocusPane::FileList;
+            self.status_message = format!("Jumped to folder: {}", sel.target_path.display());
+        } else {
+            self.navigate_to_and_focus_entry(&sel.target_path);
+            if let Some(line) = sel.line_number {
+                self.status_message =
+                    format!("Selected: {} (line {line})", sel.target_path.display());
+            } else {
+                self.status_message = format!("Selected: {}", sel.target_path.display());
+            }
+        }
+    }
+
+    pub fn trigger_fuzzy_search(&mut self, kind: FuzzyKind) {
+        match self.target_destination() {
+            TargetDestination::Local(working_dir) => {
+                self.pending_fuzzy = Some(PendingFuzzySearch {
+                    kind,
+                    working_dir,
+                    show_hidden: self.ui_state.ui_show_hidden,
+                });
+            }
+            TargetDestination::Remote { .. } => {
+                self.status_message =
+                    "Fuzzy search (fzf / rg) is only available for local folders".to_string();
+            }
+        }
+    }
+
     fn record_visit(&mut self) {
         let p = self.current_dir.to_string_lossy().into_owned();
         self.nav_data.visit_history.retain(|x| !x.eq_ignore_ascii_case(&p));
@@ -1594,6 +1663,15 @@ impl AppState {
             }
             ActionId::ConnectionManager => {
                 self.overlay = OverlayMode::ConnectionManager { cursor: 0 };
+            }
+            ActionId::FuzzyFindFile => {
+                self.trigger_fuzzy_search(FuzzyKind::FindFile);
+            }
+            ActionId::FuzzyLiveGrep => {
+                self.trigger_fuzzy_search(FuzzyKind::LiveGrep);
+            }
+            ActionId::FuzzyJumpDir => {
+                self.trigger_fuzzy_search(FuzzyKind::JumpDir);
             }
         }
     }
@@ -2536,7 +2614,7 @@ impl AppState {
                 mut cat_idx,
                 mut item_idx,
             } => {
-                let cat_counts = [8usize + self.external_apps.len(), 6, 5, 5];
+                let cat_counts = [8usize + self.external_apps.len(), 6, 5, 9];
                 match ev.code {
                     KeyCode::Esc | KeyCode::Char('q') => self.overlay = OverlayMode::None,
                     KeyCode::Left | KeyCode::Char('h') => {
@@ -2978,6 +3056,9 @@ impl AppState {
                 2 => self.execute_action(ActionId::History),
                 3 => self.execute_action(ActionId::HistoryJumpList),
                 4 => self.execute_action(ActionId::JumpAdd),
+                5 => self.execute_action(ActionId::FuzzyFindFile),
+                6 => self.execute_action(ActionId::FuzzyLiveGrep),
+                7 => self.execute_action(ActionId::FuzzyJumpDir),
                 _ => self.execute_action(ActionId::ConnectionManager),
             },
         }
@@ -3628,7 +3709,7 @@ impl AppState {
                     return;
                 }
 
-                let cat_counts = [8usize + self.external_apps.len(), 6, 5, 5];
+                let cat_counts = [8usize + self.external_apps.len(), 6, 5, 9];
                 let total = cat_counts[cat_idx];
                 let rect = crate::tui::menubar_dropdown_rect(area, cat_idx, total);
                 let in_inner = ev.column > rect.x

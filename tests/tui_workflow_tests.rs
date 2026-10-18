@@ -374,4 +374,59 @@ fn tree_selection_switches_from_remote_to_local_directory() {
     assert_eq!(app.focus_pane, FocusPane::FileList);
 }
 
+#[test]
+fn fuzzy_search_shortcuts_and_post_selection_navigation() {
+    use cuifiler::external_apps::{FuzzyKind, FuzzySelection};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let sub_dir = root.join("src").join("nested");
+    std::fs::create_dir_all(&sub_dir).unwrap();
+    let file_a = sub_dir.join("alpha.rs");
+    let file_b = sub_dir.join("beta_target.rs");
+    let file_c = sub_dir.join("gamma.rs");
+    std::fs::write(&file_a, "fn alpha() {}\n").unwrap();
+    std::fs::write(&file_b, "fn beta() {}\n").unwrap();
+    std::fs::write(&file_c, "fn gamma() {}\n").unwrap();
+
+    let mut app = AppState::new(root.to_path_buf());
+
+    // 1. Ctrl+P triggers FuzzyFindFile
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL));
+    let pending = app.pending_fuzzy.take().expect("Ctrl+P should set pending_fuzzy");
+    assert_eq!(pending.kind, FuzzyKind::FindFile);
+    assert_eq!(pending.working_dir, root.to_path_buf());
+
+    // 2. Shift+F ('F') triggers FuzzyLiveGrep
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('F'), KeyModifiers::SHIFT));
+    let pending = app.pending_fuzzy.take().expect("Shift+F should set pending_fuzzy");
+    assert_eq!(pending.kind, FuzzyKind::LiveGrep);
+
+    // 3. 'f' triggers FuzzyJumpDir
+    app.handle_key_event(key(KeyCode::Char('f')));
+    let pending = app.pending_fuzzy.take().expect("'f' should set pending_fuzzy");
+    assert_eq!(pending.kind, FuzzyKind::JumpDir);
+
+    // 4. Selecting a file in FuzzyFindFile / FuzzyLiveGrep navigates to its parent folder and focuses the file
+    app.apply_fuzzy_selection(FuzzySelection {
+        kind: FuzzyKind::LiveGrep,
+        target_path: file_b.clone(),
+        line_number: Some(12),
+    });
+    assert_eq!(app.current_dir, sub_dir);
+    assert_eq!(app.focus_pane, FocusPane::FileList);
+    let focused = app.focused_entry().expect("Should have a focused entry");
+    assert_eq!(focused.path, file_b);
+    assert!(app.status_message.contains("line 12"));
+
+    // 5. Selecting a folder in FuzzyJumpDir navigates directly into that folder
+    app.apply_fuzzy_selection(FuzzySelection {
+        kind: FuzzyKind::JumpDir,
+        target_path: root.join("src"),
+        line_number: None,
+    });
+    assert_eq!(app.current_dir, root.join("src"));
+    assert_eq!(app.focus_pane, FocusPane::FileList);
+}
+
 

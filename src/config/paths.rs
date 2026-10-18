@@ -38,6 +38,16 @@ pub fn ui_state_path() -> io::Result<PathBuf> {
     Ok(app_config_dir()?.join("ui-state.toml"))
 }
 
+/// Full path of `connections.toml` (SFTP connection profiles; never contains passwords).
+pub fn connections_path() -> io::Result<PathBuf> {
+    Ok(app_config_dir()?.join("connections.toml"))
+}
+
+/// Full path of `known_hosts.toml` (trusted SFTP host key fingerprints).
+pub fn known_hosts_path() -> io::Result<PathBuf> {
+    Ok(app_config_dir()?.join("known_hosts.toml"))
+}
+
 #[derive(Debug)]
 pub struct ConfigDirOverrideError(pub String);
 

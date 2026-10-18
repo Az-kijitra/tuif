@@ -9,6 +9,7 @@ pub mod external_apps;
 pub mod fs;
 pub mod fs_ops;
 pub mod keymap;
+pub mod remote;
 pub mod shared;
 pub mod tui;
 pub mod viewer;

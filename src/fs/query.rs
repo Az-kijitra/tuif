@@ -105,7 +105,7 @@ pub fn fs_list_dir(
     Ok(entries)
 }
 
-fn sort_entries(entries: &mut [Entry], sort_key: &str, sort_order: &str) {
+pub fn sort_entries(entries: &mut [Entry], sort_key: &str, sort_order: &str) {
     entries.sort_by(|a, b| {
         let ordering = match sort_key {
             // R-33: case-insensitive name comparison.

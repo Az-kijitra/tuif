@@ -43,6 +43,7 @@ pub enum ActionId {
     ZipCreate,
     ZipExtract,
     ActionMenu,
+    ConnectionManager,
 }
 
 impl ActionId {
@@ -81,6 +82,7 @@ impl ActionId {
         ActionId::ZipCreate,
         ActionId::ZipExtract,
         ActionId::ActionMenu,
+        ActionId::ConnectionManager,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -120,6 +122,7 @@ impl ActionId {
             ActionId::ZipCreate => "zip_create",
             ActionId::ZipExtract => "zip_extract",
             ActionId::ActionMenu => "action_menu",
+            ActionId::ConnectionManager => "connection_manager",
         }
     }
 
@@ -164,6 +167,7 @@ impl ActionId {
             ActionId::ZipCreate => "Z,Ctrl+Alt+Z",
             ActionId::ZipExtract => "Shift+Z,Ctrl+Alt+X",
             ActionId::ActionMenu => "Semicolon,F9",
+            ActionId::ConnectionManager => "Ctrl+S",
         }
     }
 }

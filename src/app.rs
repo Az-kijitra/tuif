@@ -15,6 +15,11 @@ use crate::fs::query::{self, Entry, EntryType};
 use crate::fs::win_drives;
 use crate::fs_ops::{create, delete, rename, transfer};
 use crate::keymap::{ActionId, KeyChord, Keymap};
+use crate::remote::credential;
+use crate::remote::known_hosts::{self, HostKeyStatus, KnownHosts};
+use crate::remote::path as rpath;
+use crate::remote::profile::{self, ConnectionProfile};
+use crate::remote::session::{handshake, PendingHandshake, RemoteSession};
 use crate::shared::schema::navigation::NavigationData;
 use crate::shared::schema::ui_state::UiStateData;
 use crate::viewer::{classify, text};
@@ -31,12 +36,19 @@ pub enum FocusPane {
     Tree,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteNodeInfo {
+    ProfileRoot(String), // profile_id
+    Directory { profile_id: String, path: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct TreeNode {
     pub path: PathBuf,
     pub name: String,
     pub depth: usize,
     pub expanded: bool,
+    pub remote: Option<RemoteNodeInfo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,10 +57,34 @@ pub enum ClipMode {
     Cut,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetDestination {
+    Local(PathBuf),
+    Remote { profile_id: String, path: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClipboardItem {
+    Local(PathBuf),
+    Remote { profile_id: String, path: String },
+}
+
+impl ClipboardItem {
+    pub fn name(&self) -> String {
+        match self {
+            ClipboardItem::Local(p) => p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            ClipboardItem::Remote { path, .. } => rpath::file_name(path),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FileClipboard {
     pub mode: ClipMode,
-    pub items: Vec<PathBuf>,
+    pub items: Vec<ClipboardItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,11 +92,13 @@ pub enum InputPromptKind {
     PathBar,
     Search,
     Rename { target: PathBuf },
+    RenameRemote { target: String },
     NewFile,
     NewFolder,
     ZipCreate,
     ZipExtract { zip_path: PathBuf },
     ConfirmDelete { permanent: bool, targets: Vec<PathBuf> },
+    ConfirmDeleteRemote { targets: Vec<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +108,25 @@ pub enum OverlayMode {
         kind: InputPromptKind,
         title: String,
         buffer: String,
+    },
+    PasswordPrompt {
+        profile_id: String,
+        title: String,
+        buffer: String,
+        save_password: bool,
+    },
+    HostKeyConfirm {
+        endpoint: String,
+        fingerprint: String,
+    },
+    ConnectionManager {
+        cursor: usize,
+    },
+    ConnectionEdit {
+        is_new: bool,
+        profile: ConnectionProfile,
+        cursor: usize,
+        password_buffer: String,
     },
     SortMenu {
         cursor: usize,
@@ -135,6 +192,11 @@ pub struct AppState {
     pub status_message: String,
     pub should_quit: bool,
     pub pending_launch: Option<PendingExternalLaunch>,
+    pub remote_profiles: Vec<ConnectionProfile>,
+    pub known_hosts: KnownHosts,
+    pub remote_session: Option<RemoteSession>,
+    pub remote_dir: Option<String>,
+    pub pending_handshake: Option<PendingHandshake>,
 }
 
 pub fn normalize_tree_key(path: &Path) -> String {
@@ -144,6 +206,16 @@ pub fn normalize_tree_key(path: &Path) -> String {
         format!("{}\\", trimmed.to_ascii_uppercase())
     } else {
         trimmed.to_ascii_uppercase()
+    }
+}
+
+pub fn tree_node_key(node: &TreeNode) -> String {
+    match &node.remote {
+        None => normalize_tree_key(&node.path),
+        Some(RemoteNodeInfo::ProfileRoot(id)) => format!("remote-root:{id}"),
+        Some(RemoteNodeInfo::Directory { profile_id, path }) => {
+            format!("remote:{profile_id}:{path}")
+        }
     }
 }
 
@@ -171,6 +243,15 @@ impl AppState {
         }
 
         let drives = win_drives::list_logical_drives();
+        let remote_profiles = paths::connections_path()
+            .ok()
+            .and_then(|p| profile::load(&p).ok())
+            .unwrap_or_default();
+        let known_hosts = paths::known_hosts_path()
+            .ok()
+            .map(|p| known_hosts::load(&p))
+            .unwrap_or_default();
+
         let mut app = Self {
             current_dir: initial_dir,
             entries: Vec::new(),
@@ -198,12 +279,41 @@ impl AppState {
             status_message,
             should_quit: false,
             pending_launch: None,
+            remote_profiles,
+            known_hosts,
+            remote_session: None,
+            remote_dir: None,
+            pending_handshake: None,
         };
         app.expand_ancestors_of_current_dir();
         app.reload_dir();
         app.sync_tree_cursor_to_current_dir();
         app.record_visit();
         app
+    }
+
+    pub fn save_remote_profiles(&self) {
+        if let Ok(p) = paths::connections_path() {
+            let _ = profile::save(&p, &self.remote_profiles);
+        }
+    }
+
+    pub fn save_known_hosts(&self) {
+        if let Ok(p) = paths::known_hosts_path() {
+            let _ = known_hosts::save(&p, &self.known_hosts);
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.remote_dir.is_some()
+    }
+
+    pub fn active_display_path(&self) -> String {
+        if let (Some(session), Some(rdir)) = (&self.remote_session, &self.remote_dir) {
+            format!("{}{}", session.profile.url_prefix(), rdir)
+        } else {
+            self.current_dir.to_string_lossy().into_owned()
+        }
     }
 
     /// Updates `list_rows_per_col`, `term_width`, and `term_height` from the current terminal dimensions.
@@ -218,31 +328,52 @@ impl AppState {
     }
 
     pub fn reload_dir(&mut self) {
-        if !self.current_dir.exists() {
-            if let Some(existing) = self
-                .current_dir
-                .ancestors()
-                .find(|p| p.is_dir())
-                .map(Path::to_path_buf)
-            {
-                self.current_dir = existing;
+        if let (Some(session), Some(rdir)) = (&self.remote_session, &self.remote_dir) {
+            let rdir = rdir.clone();
+            match session.list_dir(&rdir, self.ui_state.ui_show_hidden) {
+                Ok(mut list) => {
+                    query::sort_entries(
+                        &mut list,
+                        &self.ui_state.sort_key,
+                        &self.ui_state.sort_order,
+                    );
+                    self.entries = list;
+                    self.apply_filter();
+                }
+                Err(e) => {
+                    self.status_message = format!("Remote read error: {e}");
+                    self.entries.clear();
+                    self.visible_indices.clear();
+                    self.focused_vis_idx = 0;
+                }
             }
-        }
-        match query::fs_list_dir(
-            &self.current_dir,
-            self.ui_state.ui_show_hidden,
-            &self.ui_state.sort_key,
-            &self.ui_state.sort_order,
-        ) {
-            Ok(list) => {
-                self.entries = list;
-                self.apply_filter();
+        } else {
+            if !self.current_dir.exists() {
+                if let Some(existing) = self
+                    .current_dir
+                    .ancestors()
+                    .find(|p| p.is_dir())
+                    .map(Path::to_path_buf)
+                {
+                    self.current_dir = existing;
+                }
             }
-            Err(e) => {
-                self.status_message = format!("Cannot read folder: {e}");
-                self.entries.clear();
-                self.visible_indices.clear();
-                self.focused_vis_idx = 0;
+            match query::fs_list_dir(
+                &self.current_dir,
+                self.ui_state.ui_show_hidden,
+                &self.ui_state.sort_key,
+                &self.ui_state.sort_order,
+            ) {
+                Ok(list) => {
+                    self.entries = list;
+                    self.apply_filter();
+                }
+                Err(e) => {
+                    self.status_message = format!("Cannot read folder: {e}");
+                    self.entries.clear();
+                    self.visible_indices.clear();
+                    self.focused_vis_idx = 0;
+                }
             }
         }
         self.tree_children_cache.clear();
@@ -265,6 +396,26 @@ impl AppState {
         .filter(|e| e.entry_type == EntryType::Dir)
         .map(|e| (e.name, e.path))
         .collect();
+        self.tree_children_cache.insert(key, children.clone());
+        children
+    }
+
+    fn load_remote_child_dirs(&mut self, profile_id: &str, dir: &str) -> Vec<(String, PathBuf)> {
+        let key = format!("remote:{profile_id}:{dir}");
+        if let Some(cached) = self.tree_children_cache.get(&key) {
+            return cached.clone();
+        }
+        let mut children = Vec::new();
+        if let Some(session) = &self.remote_session {
+            if session.profile.id == profile_id {
+                if let Ok(dirs) = session.list_child_dirs(dir, self.ui_state.ui_show_hidden) {
+                    children = dirs
+                        .into_iter()
+                        .map(|(n, p)| (n, PathBuf::from(p)))
+                        .collect();
+                }
+            }
+        }
         self.tree_children_cache.insert(key, children.clone());
         children
     }
@@ -301,6 +452,39 @@ impl AppState {
                 self.append_tree_hierarchy(&root_path, &root_name, 0, &mut nodes);
             }
         }
+
+        // SFTP Remote Profiles
+        let remote_profiles = self.remote_profiles.clone();
+        for profile in &remote_profiles {
+            let root_key = format!("remote-root:{}", profile.id);
+            let expanded = self.expanded_dirs.contains(&root_key);
+            let root_name = format!("☁ [SFTP] {}", profile.display_label());
+            nodes.push(TreeNode {
+                path: PathBuf::from(profile.initial_dir.as_str()),
+                name: root_name,
+                depth: 0,
+                expanded,
+                remote: Some(RemoteNodeInfo::ProfileRoot(profile.id.clone())),
+            });
+            if expanded {
+                let start_dir = if let Some(session) = &self.remote_session {
+                    if session.profile.id == profile.id {
+                        Some(session.initial_dir())
+                    } else {
+                        None
+                    }
+                } else if !profile.initial_dir.is_empty() {
+                    Some(profile.initial_dir.clone())
+                } else {
+                    Some("/".to_string())
+                };
+
+                if let Some(sdir) = start_dir {
+                    self.append_remote_tree_hierarchy(&profile.id, &sdir, 1, &mut nodes);
+                }
+            }
+        }
+
         self.tree_nodes = nodes;
         if self.tree_cursor >= self.tree_nodes.len() {
             self.tree_cursor = self.tree_nodes.len().saturating_sub(1);
@@ -321,6 +505,7 @@ impl AppState {
             name: name.to_string(),
             depth,
             expanded,
+            remote: None,
         });
         if expanded && depth < 32 {
             let mut children = self.load_child_dirs(path);
@@ -353,14 +538,217 @@ impl AppState {
         }
     }
 
+    fn append_remote_tree_hierarchy(
+        &mut self,
+        profile_id: &str,
+        path: &str,
+        depth: usize,
+        out: &mut Vec<TreeNode>,
+    ) {
+        let key = format!("remote:{profile_id}:{path}");
+        let expanded = self.expanded_dirs.contains(&key);
+        let display_name = if path == "/" {
+            "/".to_string()
+        } else {
+            rpath::file_name(path)
+        };
+        out.push(TreeNode {
+            path: PathBuf::from(path),
+            name: display_name,
+            depth,
+            expanded,
+            remote: Some(RemoteNodeInfo::Directory {
+                profile_id: profile_id.to_string(),
+                path: path.to_string(),
+            }),
+        });
+        if expanded && depth < 32 {
+            let children = self.load_remote_child_dirs(profile_id, path);
+            for (_child_name, child_path) in children {
+                let child_str = child_path.to_string_lossy();
+                self.append_remote_tree_hierarchy(profile_id, &child_str, depth + 1, out);
+            }
+        }
+    }
+
     pub fn sync_tree_cursor_to_current_dir(&mut self) {
-        let target_key = normalize_tree_key(&self.current_dir);
-        if let Some(idx) = self
-            .tree_nodes
+        if let (Some(session), Some(rdir)) = (&self.remote_session, &self.remote_dir) {
+            let target_key = format!("remote:{}:{rdir}", session.profile.id);
+            if let Some(idx) = self.tree_nodes.iter().position(|n| tree_node_key(n) == target_key) {
+                self.tree_cursor = idx;
+            }
+        } else {
+            let target_key = normalize_tree_key(&self.current_dir);
+            if let Some(idx) = self
+                .tree_nodes
+                .iter()
+                .position(|n| tree_node_key(n) == target_key)
+            {
+                self.tree_cursor = idx;
+            }
+        }
+    }
+
+    pub fn navigate_to_remote(&mut self, profile_id: &str, dir: &str) {
+        let rdir = rpath::normalize(dir);
+        let is_connected = self
+            .remote_session
+            .as_ref()
+            .map(|s| s.profile.id == profile_id)
+            .unwrap_or(false);
+        if !is_connected {
+            self.connect_profile(profile_id, Some(rdir));
+            return;
+        }
+
+        self.remote_dir = Some(rdir.clone());
+        self.selected_paths.clear();
+        self.focused_vis_idx = 0;
+        self.search_query.clear();
+
+        for anc in rpath::ancestors_root_first(&rdir) {
+            self.expanded_dirs
+                .insert(format!("remote:{profile_id}:{anc}"));
+        }
+        self.expanded_dirs
+            .insert(format!("remote-root:{profile_id}"));
+
+        self.reload_dir();
+        self.sync_tree_cursor_to_current_dir();
+    }
+
+    pub fn connect_profile(&mut self, profile_id: &str, target_dir: Option<String>) {
+        let Some(profile) = self
+            .remote_profiles
             .iter()
-            .position(|n| normalize_tree_key(&n.path) == target_key)
-        {
-            self.tree_cursor = idx;
+            .find(|p| p.id == profile_id)
+            .cloned()
+        else {
+            self.status_message = format!("Connection profile not found: {profile_id}");
+            return;
+        };
+        self.status_message = format!("Connecting to {}...", profile.display_label());
+
+        match handshake(&profile, &self.known_hosts) {
+            Ok(pending) => match pending.status {
+                HostKeyStatus::Unknown => {
+                    self.overlay = OverlayMode::HostKeyConfirm {
+                        endpoint: profile.endpoint_key(),
+                        fingerprint: pending.fingerprint.clone(),
+                    };
+                    self.pending_handshake = Some(pending);
+                }
+                HostKeyStatus::Mismatch { expected } => {
+                    self.status_message = format!(
+                        "HOST KEY MISMATCH for {}! Expected {expected}, got {}",
+                        profile.endpoint_key(),
+                        pending.fingerprint
+                    );
+                }
+                HostKeyStatus::Trusted => {
+                    self.finish_connect(pending, target_dir);
+                }
+            },
+            Err(e) => {
+                self.status_message = format!("Connection failed: {e}");
+            }
+        }
+    }
+
+    pub fn finish_connect(&mut self, pending: PendingHandshake, target_dir: Option<String>) {
+        let profile = pending.profile.clone();
+        let saved_pw = if profile.save_password {
+            credential::load_password(&profile.credential_target())
+        } else {
+            None
+        };
+
+        if let Some(pw) = saved_pw {
+            match pending.authenticate(&pw) {
+                Ok(session) => {
+                    let initial = target_dir.unwrap_or_else(|| session.initial_dir());
+                    self.status_message = format!("Connected to {}", profile.display_label());
+                    self.expanded_dirs
+                        .insert(format!("remote-root:{}", profile.id));
+                    self.remote_session = Some(session);
+                    self.navigate_to_remote(&profile.id, &initial);
+                }
+                Err(e) => {
+                    self.status_message = format!("Authentication error: {e}");
+                    self.pending_handshake = None;
+                    self.overlay = OverlayMode::PasswordPrompt {
+                        profile_id: profile.id.clone(),
+                        title: format!("Password for {}", profile.display_label()),
+                        buffer: String::new(),
+                        save_password: profile.save_password,
+                    };
+                }
+            }
+        } else {
+            self.pending_handshake = Some(pending);
+            self.overlay = OverlayMode::PasswordPrompt {
+                profile_id: profile.id.clone(),
+                title: format!("Password for {}", profile.display_label()),
+                buffer: String::new(),
+                save_password: profile.save_password,
+            };
+        }
+    }
+
+    pub fn authenticate_and_connect(&mut self, password: &str, save_pw: bool) {
+        let Some(pending) = self.pending_handshake.take() else {
+            self.status_message = "No pending connection".to_string();
+            return;
+        };
+        let profile = pending.profile.clone();
+        match pending.authenticate(password) {
+            Ok(session) => {
+                if save_pw {
+                    let _ = credential::save_password(&profile.credential_target(), &profile.user, password);
+                }
+                if let Some(p) = self.remote_profiles.iter_mut().find(|p| p.id == profile.id) {
+                    p.save_password = save_pw;
+                }
+                self.save_remote_profiles();
+                let initial = session.initial_dir();
+                self.status_message = format!("Connected to {}", profile.display_label());
+                self.expanded_dirs
+                    .insert(format!("remote-root:{}", profile.id));
+                self.remote_session = Some(session);
+                self.navigate_to_remote(&profile.id, &initial);
+            }
+            Err(e) => {
+                self.status_message = format!("Authentication error: {e}");
+            }
+        }
+    }
+
+    pub fn open_remote_in_viewer(&mut self, remote_path: &str) {
+        let Some(session) = &self.remote_session else {
+            return;
+        };
+        let temp_dir = std::env::temp_dir()
+            .join("tuif-remote")
+            .join(&session.profile.id);
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let file_name = rpath::file_name(remote_path);
+        let local_temp = temp_dir.join(crate::remote::session::sanitize_windows_name(&file_name));
+        self.status_message = format!("Downloading {file_name} for viewing...");
+        match session.download(remote_path, &local_temp) {
+            Ok(_) => {
+                let url_title = format!(
+                    "{}/{}",
+                    session.profile.url_prefix(),
+                    remote_path.trim_start_matches('/')
+                );
+                self.open_in_viewer(&local_temp);
+                if let OverlayMode::Viewer { ref mut title, .. } = self.overlay {
+                    *title = url_title;
+                }
+            }
+            Err(e) => {
+                self.status_message = format!("Download failed: {e}");
+            }
         }
     }
 
@@ -432,6 +820,95 @@ impl AppState {
             vec![entry.path.clone()]
         } else {
             Vec::new()
+        }
+    }
+
+    pub fn target_destination(&self) -> TargetDestination {
+        if self.focus_pane == FocusPane::Tree {
+            if let Some(node) = self.tree_nodes.get(self.tree_cursor) {
+                if let Some(remote) = &node.remote {
+                    return match remote {
+                        RemoteNodeInfo::Directory { profile_id, path } => {
+                            TargetDestination::Remote {
+                                profile_id: profile_id.clone(),
+                                path: path.clone(),
+                            }
+                        }
+                        RemoteNodeInfo::ProfileRoot(pid) => {
+                            let profile = self.remote_profiles.iter().find(|p| &p.id == pid);
+                            let initial = profile
+                                .map(|p| p.initial_dir.clone())
+                                .unwrap_or_else(|| "/".to_string());
+                            TargetDestination::Remote {
+                                profile_id: pid.clone(),
+                                path: if initial.is_empty() {
+                                    "/".to_string()
+                                } else {
+                                    initial
+                                },
+                            }
+                        }
+                    };
+                }
+                return TargetDestination::Local(node.path.clone());
+            }
+        }
+        if let (Some(session), Some(rdir)) = (&self.remote_session, &self.remote_dir) {
+            TargetDestination::Remote {
+                profile_id: session.profile.id.clone(),
+                path: rdir.clone(),
+            }
+        } else {
+            TargetDestination::Local(self.current_dir.clone())
+        }
+    }
+
+    pub fn operation_targets_clipboard(&self) -> Vec<ClipboardItem> {
+        if self.focus_pane == FocusPane::Tree {
+            if let Some(node) = self.tree_nodes.get(self.tree_cursor) {
+                if let Some(remote) = &node.remote {
+                    return match remote {
+                        RemoteNodeInfo::Directory { profile_id, path } => {
+                            vec![ClipboardItem::Remote {
+                                profile_id: profile_id.clone(),
+                                path: path.clone(),
+                            }]
+                        }
+                        RemoteNodeInfo::ProfileRoot(_) => Vec::new(),
+                    };
+                }
+                return vec![ClipboardItem::Local(node.path.clone())];
+            }
+            return Vec::new();
+        }
+
+        if let (Some(session), true) = (&self.remote_session, self.is_remote()) {
+            let pid = session.profile.id.clone();
+            let visible_selected: Vec<ClipboardItem> = self
+                .visible_indices
+                .iter()
+                .filter_map(|&idx| self.entries.get(idx))
+                .filter(|e| self.selected_paths.contains(&e.path))
+                .map(|e| ClipboardItem::Remote {
+                    profile_id: pid.clone(),
+                    path: e.path.to_string_lossy().into_owned(),
+                })
+                .collect();
+            if !visible_selected.is_empty() {
+                visible_selected
+            } else if let Some(entry) = self.focused_entry() {
+                vec![ClipboardItem::Remote {
+                    profile_id: pid,
+                    path: entry.path.to_string_lossy().into_owned(),
+                }]
+            } else {
+                Vec::new()
+            }
+        } else {
+            self.operation_targets()
+                .into_iter()
+                .map(ClipboardItem::Local)
+                .collect()
         }
     }
 
@@ -570,7 +1047,7 @@ impl AppState {
             ActionId::MoveLeft => {
                 if self.focus_pane == FocusPane::Tree {
                     if let Some(node) = self.tree_nodes.get(self.tree_cursor).cloned() {
-                        let key = normalize_tree_key(&node.path);
+                        let key = tree_node_key(&node);
                         if node.expanded {
                             self.expanded_dirs.remove(&key);
                             self.rebuild_tree();
@@ -591,7 +1068,7 @@ impl AppState {
             ActionId::MoveRight => {
                 if self.focus_pane == FocusPane::Tree {
                     if let Some(node) = self.tree_nodes.get(self.tree_cursor).cloned() {
-                        let key = normalize_tree_key(&node.path);
+                        let key = tree_node_key(&node);
                         if !node.expanded {
                             self.tree_children_cache.remove(&key);
                             self.expanded_dirs.insert(key);
@@ -649,7 +1126,7 @@ impl AppState {
             ActionId::SelectToggle => {
                 if self.focus_pane == FocusPane::Tree {
                     if let Some(node) = self.tree_nodes.get(self.tree_cursor).cloned() {
-                        let key = normalize_tree_key(&node.path);
+                        let key = tree_node_key(&node);
                         if node.expanded {
                             self.expanded_dirs.remove(&key);
                         } else {
@@ -682,9 +1159,35 @@ impl AppState {
             ActionId::Open => {
                 if self.focus_pane == FocusPane::Tree {
                     if let Some(node) = self.tree_nodes.get(self.tree_cursor).cloned() {
-                        let target = node.path;
-                        self.focus_pane = FocusPane::FileList;
-                        self.navigate_to(target);
+                        if let Some(remote) = &node.remote {
+                            match remote {
+                                RemoteNodeInfo::ProfileRoot(pid) => {
+                                    self.connect_profile(pid, None);
+                                }
+                                RemoteNodeInfo::Directory { profile_id, path } => {
+                                    self.focus_pane = FocusPane::FileList;
+                                    self.navigate_to_remote(profile_id, path);
+                                }
+                            }
+                        } else {
+                            let target = node.path;
+                            self.focus_pane = FocusPane::FileList;
+                            self.navigate_to(target);
+                        }
+                    }
+                    return;
+                }
+                if self.is_remote() {
+                    if let Some(entry) = self.focused_entry().cloned() {
+                        let rpath_str = entry.path.to_string_lossy().into_owned();
+                        if entry.entry_type == EntryType::Dir {
+                            if let Some(session) = &self.remote_session {
+                                let pid = session.profile.id.clone();
+                                self.navigate_to_remote(&pid, &rpath_str);
+                            }
+                        } else {
+                            self.open_remote_in_viewer(&rpath_str);
+                        }
                     }
                     return;
                 }
@@ -697,7 +1200,12 @@ impl AppState {
                 }
             }
             ActionId::GoParent => {
-                if let Some(parent) = self.current_dir.parent().map(Path::to_path_buf) {
+                if let (Some(session), Some(rdir)) = (&self.remote_session, &self.remote_dir) {
+                    if let Some(parent) = rpath::parent(rdir) {
+                        let pid = session.profile.id.clone();
+                        self.navigate_to_remote(&pid, &parent);
+                    }
+                } else if let Some(parent) = self.current_dir.parent().map(Path::to_path_buf) {
                     if parent != self.current_dir {
                         self.navigate_to(parent);
                     }
@@ -707,10 +1215,11 @@ impl AppState {
                 self.should_quit = true;
             }
             ActionId::FocusPath => {
+                let buf = self.active_display_path();
                 self.overlay = OverlayMode::Input {
                     kind: InputPromptKind::PathBar,
                     title: "Enter Path (Enter:Go / Esc:Cancel)".to_string(),
-                    buffer: self.current_dir.to_string_lossy().into_owned(),
+                    buffer: buf,
                 };
             }
             ActionId::ToggleHidden => {
@@ -738,7 +1247,7 @@ impl AppState {
                 self.save_ui_state();
             }
             ActionId::Copy => {
-                let targets = self.operation_targets();
+                let targets = self.operation_targets_clipboard();
                 if !targets.is_empty() {
                     let count = targets.len();
                     self.clipboard = Some(FileClipboard {
@@ -749,7 +1258,7 @@ impl AppState {
                 }
             }
             ActionId::Cut => {
-                let targets = self.operation_targets();
+                let targets = self.operation_targets_clipboard();
                 if !targets.is_empty() {
                     let count = targets.len();
                     self.clipboard = Some(FileClipboard {
@@ -764,55 +1273,80 @@ impl AppState {
                     self.status_message = "Clipboard is empty".to_string();
                     return;
                 };
-                let dest_dir = self.active_target_dir();
-                let summary = match clip.mode {
-                    ClipMode::Copy => transfer::copy_batch(
-                        &clip.items,
-                        &dest_dir,
-                        transfer::ConflictResolution::Overwrite,
-                    ),
-                    ClipMode::Cut => {
-                        let s = transfer::move_batch(
-                            &clip.items,
-                            &dest_dir,
-                            transfer::ConflictResolution::Overwrite,
-                        );
-                        if s.failed == 0 {
-                            self.clipboard = None;
-                        }
-                        s
-                    }
-                };
-                self.reload_dir();
-                self.status_message = format!(
-                    "Paste complete: {} succeeded / {} failed",
-                    summary.ok, summary.failed
-                );
+                self.execute_paste(clip);
             }
             ActionId::Delete | ActionId::DeletePermanent => {
-                let targets = self.operation_targets();
+                let targets = self.operation_targets_clipboard();
                 if targets.is_empty() {
                     return;
                 }
-                let permanent = action == ActionId::DeletePermanent;
-                let title = if permanent {
-                    format!("Permanently delete {} item(s)? (y/Enter:Confirm / Esc:Cancel)", targets.len())
-                } else {
-                    format!("Move {} item(s) to Trash? (y/Enter:Confirm / Esc:Cancel)", targets.len())
-                };
-                self.overlay = OverlayMode::Input {
-                    kind: InputPromptKind::ConfirmDelete { permanent, targets },
-                    title,
-                    buffer: String::new(),
-                };
+                let mut remote_targets = Vec::new();
+                let mut local_targets = Vec::new();
+                for t in targets {
+                    match t {
+                        ClipboardItem::Local(p) => local_targets.push(p),
+                        ClipboardItem::Remote { path, .. } => remote_targets.push(path),
+                    }
+                }
+                if !remote_targets.is_empty() {
+                    let title = format!(
+                        "Permanently delete {} remote item(s)? (y/Enter:Confirm / Esc:Cancel)",
+                        remote_targets.len()
+                    );
+                    self.overlay = OverlayMode::Input {
+                        kind: InputPromptKind::ConfirmDeleteRemote {
+                            targets: remote_targets,
+                        },
+                        title,
+                        buffer: String::new(),
+                    };
+                } else if !local_targets.is_empty() {
+                    let permanent = action == ActionId::DeletePermanent;
+                    let title = if permanent {
+                        format!(
+                            "Permanently delete {} item(s)? (y/Enter:Confirm / Esc:Cancel)",
+                            local_targets.len()
+                        )
+                    } else {
+                        format!(
+                            "Move {} item(s) to Trash? (y/Enter:Confirm / Esc:Cancel)",
+                            local_targets.len()
+                        )
+                    };
+                    self.overlay = OverlayMode::Input {
+                        kind: InputPromptKind::ConfirmDelete {
+                            permanent,
+                            targets: local_targets,
+                        },
+                        title,
+                        buffer: String::new(),
+                    };
+                }
             }
             ActionId::Rename => {
                 if self.focus_pane == FocusPane::Tree {
                     if let Some(node) = self.tree_nodes.get(self.tree_cursor).cloned() {
+                        if let Some(RemoteNodeInfo::Directory { path, .. }) = node.remote {
+                            self.overlay = OverlayMode::Input {
+                                kind: InputPromptKind::RenameRemote { target: path },
+                                title: "Rename Remote Folder (Enter:Apply / Esc:Cancel)".to_string(),
+                                buffer: node.name,
+                            };
+                        } else if node.remote.is_none() {
+                            self.overlay = OverlayMode::Input {
+                                kind: InputPromptKind::Rename { target: node.path },
+                                title: "Rename (Enter:Apply / Esc:Cancel)".to_string(),
+                                buffer: node.name,
+                            };
+                        }
+                    }
+                } else if self.is_remote() {
+                    if let Some(entry) = self.focused_entry().cloned() {
+                        let rpath = entry.path.to_string_lossy().into_owned();
                         self.overlay = OverlayMode::Input {
-                            kind: InputPromptKind::Rename { target: node.path },
-                            title: "Rename (Enter:Apply / Esc:Cancel)".to_string(),
-                            buffer: node.name,
+                            kind: InputPromptKind::RenameRemote { target: rpath },
+                            title: "Rename Remote (Enter:Apply / Esc:Cancel)".to_string(),
+                            buffer: entry.name,
                         };
                     }
                 } else if let Some(entry) = self.focused_entry().cloned() {
@@ -917,6 +1451,153 @@ impl AppState {
             }
             ActionId::ActionMenu => {
                 self.overlay = OverlayMode::ActionMenu { cursor: 0 };
+            }
+            ActionId::ConnectionManager => {
+                self.overlay = OverlayMode::ConnectionManager { cursor: 0 };
+            }
+        }
+    }
+
+    fn execute_paste(&mut self, clip: FileClipboard) {
+        let dest = self.target_destination();
+        match dest {
+            TargetDestination::Local(dest_dir) => {
+                let mut local_items = Vec::new();
+                let mut remote_downloads = Vec::new();
+                for item in &clip.items {
+                    match item {
+                        ClipboardItem::Local(p) => local_items.push(p.clone()),
+                        ClipboardItem::Remote { profile_id, path } => {
+                            remote_downloads.push((profile_id.clone(), path.clone()));
+                        }
+                    }
+                }
+                let mut total_succeeded = 0;
+                let mut total_failed = 0;
+                if !local_items.is_empty() {
+                    let s = match clip.mode {
+                        ClipMode::Copy => transfer::copy_batch(
+                            &local_items,
+                            &dest_dir,
+                            transfer::ConflictResolution::Overwrite,
+                        ),
+                        ClipMode::Cut => transfer::move_batch(
+                            &local_items,
+                            &dest_dir,
+                            transfer::ConflictResolution::Overwrite,
+                        ),
+                    };
+                    total_succeeded += s.ok;
+                    total_failed += s.failed;
+                }
+                for (pid, rpath) in &remote_downloads {
+                    let active_match = self
+                        .remote_session
+                        .as_ref()
+                        .filter(|s| &s.profile.id == pid);
+                    if let Some(session) = active_match {
+                        let name = rpath::file_name(rpath);
+                        let local_target = dest_dir.join(crate::remote::session::sanitize_windows_name(&name));
+                        match session.download(rpath, &local_target) {
+                            Ok(_) => {
+                                total_succeeded += 1;
+                                if clip.mode == ClipMode::Cut {
+                                    let _ = session.remove_recursive(rpath);
+                                }
+                            }
+                            Err(_) => {
+                                total_failed += 1;
+                            }
+                        }
+                    } else {
+                        total_failed += 1;
+                    }
+                }
+                if clip.mode == ClipMode::Cut && total_failed == 0 {
+                    self.clipboard = None;
+                }
+                self.reload_dir();
+                self.status_message = format!(
+                    "Paste complete: {total_succeeded} succeeded / {total_failed} failed"
+                );
+            }
+            TargetDestination::Remote {
+                profile_id,
+                path: dest_rdir,
+            } => {
+                let Some(session) = self
+                    .remote_session
+                    .as_ref()
+                    .filter(|s| s.profile.id == profile_id)
+                else {
+                    self.status_message =
+                        "Remote session is not active for destination".to_string();
+                    return;
+                };
+                let mut total_succeeded = 0;
+                let mut total_failed = 0;
+                for item in &clip.items {
+                    match item {
+                        ClipboardItem::Local(local_path) => {
+                            let fname = local_path
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| "unnamed".to_string());
+                            let rtarget = rpath::join(&dest_rdir, &fname);
+                            match session.upload(local_path, &rtarget) {
+                                Ok(_) => {
+                                    total_succeeded += 1;
+                                    if clip.mode == ClipMode::Cut {
+                                        let _ = if local_path.is_dir() {
+                                            std::fs::remove_dir_all(local_path)
+                                        } else {
+                                            std::fs::remove_file(local_path)
+                                        };
+                                    }
+                                }
+                                Err(_) => {
+                                    total_failed += 1;
+                                }
+                            }
+                        }
+                        ClipboardItem::Remote {
+                            profile_id: src_pid,
+                            path: src_path,
+                        } => {
+                            let fname = rpath::file_name(src_path);
+                            let rtarget = rpath::join(&dest_rdir, &fname);
+                            if src_pid == &profile_id {
+                                if clip.mode == ClipMode::Cut {
+                                    match session.rename(src_path, &rtarget) {
+                                        Ok(()) => total_succeeded += 1,
+                                        Err(_) => total_failed += 1,
+                                    }
+                                } else {
+                                    let temp_dir = std::env::temp_dir().join("tuif-copy");
+                                    let _ = std::fs::create_dir_all(&temp_dir);
+                                    let temp_path = temp_dir.join(crate::remote::session::sanitize_windows_name(&fname));
+                                    if session.download(src_path, &temp_path).is_ok()
+                                        && session.upload(&temp_path, &rtarget).is_ok()
+                                    {
+                                        total_succeeded += 1;
+                                    } else {
+                                        total_failed += 1;
+                                    }
+                                    let _ = std::fs::remove_file(&temp_path);
+                                }
+                            } else {
+                                total_failed += 1;
+                            }
+                        }
+                    }
+                }
+                if clip.mode == ClipMode::Cut && total_failed == 0 {
+                    self.clipboard = None;
+                }
+                self.reload_dir();
+                self.status_message = format!(
+                    "Remote paste complete: {total_succeeded} succeeded / {total_failed} failed"
+                );
             }
         }
     }
@@ -1045,6 +1726,33 @@ impl AppState {
                                 "Delete complete: {} succeeded / {} failed",
                                 summary.ok, summary.failed
                             );
+                        }
+                        KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                            self.overlay = OverlayMode::None;
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+                if let InputPromptKind::ConfirmDeleteRemote { targets } = kind {
+                    match ev.code {
+                        KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            self.overlay = OverlayMode::None;
+                            if let Some(session) = &self.remote_session {
+                                let mut succeeded = 0;
+                                let mut failed = 0;
+                                for t in &targets {
+                                    match session.remove_recursive(t) {
+                                        Ok(()) => succeeded += 1,
+                                        Err(_) => failed += 1,
+                                    }
+                                }
+                                self.selected_paths.clear();
+                                self.reload_dir();
+                                self.status_message = format!(
+                                    "Remote delete complete: {succeeded} succeeded / {failed} failed"
+                                );
+                            }
                         }
                         KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
                             self.overlay = OverlayMode::None;
@@ -1388,6 +2096,232 @@ impl AppState {
                     _ => {}
                 }
             }
+            OverlayMode::PasswordPrompt {
+                profile_id,
+                title,
+                mut buffer,
+                mut save_password,
+            } => match ev.code {
+                KeyCode::Esc => {
+                    self.overlay = OverlayMode::None;
+                    self.pending_handshake = None;
+                    self.status_message = "Connection cancelled".to_string();
+                }
+                KeyCode::Tab => {
+                    save_password = !save_password;
+                    self.overlay = OverlayMode::PasswordPrompt {
+                        profile_id,
+                        title,
+                        buffer,
+                        save_password,
+                    };
+                }
+                KeyCode::Backspace => {
+                    buffer.pop();
+                    self.overlay = OverlayMode::PasswordPrompt {
+                        profile_id,
+                        title,
+                        buffer,
+                        save_password,
+                    };
+                }
+                KeyCode::Enter => {
+                    self.overlay = OverlayMode::None;
+                    self.authenticate_and_connect(&buffer, save_password);
+                }
+                KeyCode::Char(c) => {
+                    buffer.push(c);
+                    self.overlay = OverlayMode::PasswordPrompt {
+                        profile_id,
+                        title,
+                        buffer,
+                        save_password,
+                    };
+                }
+                _ => {}
+            },
+            OverlayMode::HostKeyConfirm {
+                endpoint,
+                fingerprint,
+            } => match ev.code {
+                KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                    self.overlay = OverlayMode::None;
+                    self.pending_handshake = None;
+                    self.status_message = "Host key rejected. Connection cancelled.".to_string();
+                }
+                KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    self.known_hosts.trust(&endpoint, &fingerprint);
+                    self.save_known_hosts();
+                    self.overlay = OverlayMode::None;
+                    if let Some(pending) = self.pending_handshake.take() {
+                        self.finish_connect(pending, None);
+                    }
+                }
+                _ => {}
+            },
+            OverlayMode::ConnectionManager { mut cursor } => match ev.code {
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    self.overlay = OverlayMode::None;
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    if !self.remote_profiles.is_empty() {
+                        cursor = (cursor + 1).min(self.remote_profiles.len() - 1);
+                    }
+                    self.overlay = OverlayMode::ConnectionManager { cursor };
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    cursor = cursor.saturating_sub(1);
+                    self.overlay = OverlayMode::ConnectionManager { cursor };
+                }
+                KeyCode::Char('a') | KeyCode::Char('n') => {
+                    self.overlay = OverlayMode::ConnectionEdit {
+                        is_new: true,
+                        profile: ConnectionProfile::default(),
+                        cursor: 0,
+                        password_buffer: String::new(),
+                    };
+                }
+                KeyCode::Char('e') => {
+                    if let Some(p) = self.remote_profiles.get(cursor).cloned() {
+                        let pw = credential::load_password(&p.credential_target()).unwrap_or_default();
+                        self.overlay = OverlayMode::ConnectionEdit {
+                            is_new: false,
+                            profile: p,
+                            cursor: 0,
+                            password_buffer: pw,
+                        };
+                    }
+                }
+                KeyCode::Char('d') => {
+                    if cursor < self.remote_profiles.len() {
+                        let p = self.remote_profiles.remove(cursor);
+                        credential::delete_password(&p.credential_target());
+                        self.save_remote_profiles();
+                        self.rebuild_tree();
+                        if cursor >= self.remote_profiles.len() && cursor > 0 {
+                            cursor -= 1;
+                        }
+                        self.overlay = OverlayMode::ConnectionManager { cursor };
+                        self.status_message = format!("Removed profile: {}", p.display_label());
+                    }
+                }
+                KeyCode::Enter => {
+                    if let Some(p) = self.remote_profiles.get(cursor).cloned() {
+                        self.overlay = OverlayMode::None;
+                        self.connect_profile(&p.id, None);
+                    }
+                }
+                _ => {}
+            },
+            OverlayMode::ConnectionEdit {
+                is_new,
+                mut profile,
+                mut cursor,
+                mut password_buffer,
+            } => match ev.code {
+                KeyCode::Esc => {
+                    self.overlay = OverlayMode::ConnectionManager { cursor: 0 };
+                }
+                KeyCode::Up | KeyCode::BackTab => {
+                    cursor = cursor.saturating_sub(1);
+                    self.overlay = OverlayMode::ConnectionEdit {
+                        is_new,
+                        profile,
+                        cursor,
+                        password_buffer,
+                    };
+                }
+                KeyCode::Down | KeyCode::Tab => {
+                    cursor = (cursor + 1).min(6);
+                    self.overlay = OverlayMode::ConnectionEdit {
+                        is_new,
+                        profile,
+                        cursor,
+                        password_buffer,
+                    };
+                }
+                KeyCode::Char(' ') if cursor == 5 => {
+                    profile.save_password = !profile.save_password;
+                    self.overlay = OverlayMode::ConnectionEdit {
+                        is_new,
+                        profile,
+                        cursor,
+                        password_buffer,
+                    };
+                }
+                KeyCode::Backspace => {
+                    match cursor {
+                        0 => { profile.name.pop(); }
+                        1 => { profile.host.pop(); }
+                        2 => {
+                            let mut s = profile.port.to_string();
+                            s.pop();
+                            profile.port = s.parse::<u16>().unwrap_or(0);
+                        }
+                        3 => { profile.user.pop(); }
+                        4 => { password_buffer.pop(); }
+                        6 => { profile.initial_dir.pop(); }
+                        _ => {}
+                    }
+                    self.overlay = OverlayMode::ConnectionEdit {
+                        is_new,
+                        profile,
+                        cursor,
+                        password_buffer,
+                    };
+                }
+                KeyCode::Char(c) => {
+                    match cursor {
+                        0 => { profile.name.push(c); }
+                        1 => { profile.host.push(c); }
+                        2 => {
+                            if c.is_ascii_digit() {
+                                let mut s = profile.port.to_string();
+                                if s == "0" || s == "22" && profile.port == 22 {
+                                    s.clear();
+                                }
+                                s.push(c);
+                                if let Ok(port) = s.parse::<u16>() {
+                                    profile.port = port;
+                                }
+                            }
+                        }
+                        3 => { profile.user.push(c); }
+                        4 => { password_buffer.push(c); }
+                        6 => { profile.initial_dir.push(c); }
+                        _ => {}
+                    }
+                    self.overlay = OverlayMode::ConnectionEdit {
+                        is_new,
+                        profile,
+                        cursor,
+                        password_buffer,
+                    };
+                }
+                KeyCode::Enter => {
+                    if profile.id.is_empty() {
+                        profile.id = format!("{}_{}", profile.user, profile.host);
+                    }
+                    if profile.port == 0 {
+                        profile.port = 22;
+                    }
+                    if profile.save_password && !password_buffer.is_empty() {
+                        let _ = credential::save_password(&profile.credential_target(), &profile.user, &password_buffer);
+                    } else if !profile.save_password {
+                        credential::delete_password(&profile.credential_target());
+                    }
+                    if is_new {
+                        self.remote_profiles.push(profile);
+                    } else if let Some(p) = self.remote_profiles.iter_mut().find(|p| p.id == profile.id) {
+                        *p = profile;
+                    }
+                    self.save_remote_profiles();
+                    self.rebuild_tree();
+                    self.overlay = OverlayMode::ConnectionManager { cursor: 0 };
+                    self.status_message = "Connection profile saved".to_string();
+                }
+                _ => {}
+            },
         }
     }
 
@@ -1428,7 +2362,8 @@ impl AppState {
                 1 => self.execute_action(ActionId::FocusPath),
                 2 => self.execute_action(ActionId::History),
                 3 => self.execute_action(ActionId::HistoryJumpList),
-                _ => self.execute_action(ActionId::JumpAdd),
+                4 => self.execute_action(ActionId::JumpAdd),
+                _ => self.execute_action(ActionId::ConnectionManager),
             },
         }
     }
@@ -1438,6 +2373,13 @@ impl AppState {
         match kind {
             InputPromptKind::PathBar => {
                 if !trimmed.is_empty() {
+                    if self.is_remote() && trimmed.starts_with('/') {
+                        if let Some(session) = &self.remote_session {
+                            let pid = session.profile.id.clone();
+                            self.navigate_to_remote(&pid, trimmed);
+                            return;
+                        }
+                    }
                     self.navigate_to(PathBuf::from(trimmed));
                 }
             }
@@ -1463,31 +2405,97 @@ impl AppState {
                     }
                 }
             }
+            InputPromptKind::RenameRemote { target } => {
+                if !trimmed.is_empty() {
+                    if let Some(session) = &self.remote_session {
+                        let parent = rpath::parent(&target).unwrap_or_else(|| "/".to_string());
+                        let new_path = rpath::join(&parent, trimmed);
+                        match session.rename(&target, &new_path) {
+                            Ok(()) => {
+                                if self.remote_dir.as_deref() == Some(&target) {
+                                    self.remote_dir = Some(new_path);
+                                }
+                                self.reload_dir();
+                                self.status_message = format!("Renamed remote to: {trimmed}");
+                            }
+                            Err(e) => {
+                                self.status_message = format!("Rename failed: {e}");
+                            }
+                        }
+                    }
+                }
+            }
             InputPromptKind::NewFile => {
                 if !trimmed.is_empty() {
-                    let dest_dir = self.active_target_dir();
-                    match create::create_entry(&dest_dir, trimmed, "file") {
-                        Ok(()) => {
-                            self.reload_dir();
-                            self.status_message = format!("Created file: {trimmed}");
+                    match self.target_destination() {
+                        TargetDestination::Local(dest_dir) => {
+                            match create::create_entry(&dest_dir, trimmed, "file") {
+                                Ok(()) => {
+                                    self.reload_dir();
+                                    self.status_message = format!("Created file: {trimmed}");
+                                }
+                                Err(e) => {
+                                    self.status_message = format!("Failed to create file: {e:?}");
+                                }
+                            }
                         }
-                        Err(e) => {
-                            self.status_message = format!("Failed to create file: {e:?}");
+                        TargetDestination::Remote { profile_id, path } => {
+                            if let Some(session) = self
+                                .remote_session
+                                .as_ref()
+                                .filter(|s| s.profile.id == profile_id)
+                            {
+                                let rtarget = rpath::join(&path, trimmed);
+                                match session.create_file(&rtarget) {
+                                    Ok(()) => {
+                                        self.reload_dir();
+                                        self.status_message =
+                                            format!("Created remote file: {trimmed}");
+                                    }
+                                    Err(e) => {
+                                        self.status_message =
+                                            format!("Failed to create remote file: {e}");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
             InputPromptKind::NewFolder => {
                 if !trimmed.is_empty() {
-                    let dest_dir = self.active_target_dir();
-                    match create::create_entry(&dest_dir, trimmed, "dir") {
-                        Ok(()) => {
-                            self.expanded_dirs.insert(normalize_tree_key(&dest_dir));
-                            self.reload_dir();
-                            self.status_message = format!("Created folder: {trimmed}");
+                    match self.target_destination() {
+                        TargetDestination::Local(dest_dir) => {
+                            match create::create_entry(&dest_dir, trimmed, "dir") {
+                                Ok(()) => {
+                                    self.expanded_dirs.insert(normalize_tree_key(&dest_dir));
+                                    self.reload_dir();
+                                    self.status_message = format!("Created folder: {trimmed}");
+                                }
+                                Err(e) => {
+                                    self.status_message = format!("Failed to create folder: {e:?}");
+                                }
+                            }
                         }
-                        Err(e) => {
-                            self.status_message = format!("Failed to create folder: {e:?}");
+                        TargetDestination::Remote { profile_id, path } => {
+                            if let Some(session) = self
+                                .remote_session
+                                .as_ref()
+                                .filter(|s| s.profile.id == profile_id)
+                            {
+                                let rtarget = rpath::join(&path, trimmed);
+                                match session.create_dir(&rtarget) {
+                                    Ok(()) => {
+                                        self.reload_dir();
+                                        self.status_message =
+                                            format!("Created remote folder: {trimmed}");
+                                    }
+                                    Err(e) => {
+                                        self.status_message =
+                                            format!("Failed to create remote folder: {e}");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1534,7 +2542,7 @@ impl AppState {
                     }
                 }
             }
-            InputPromptKind::ConfirmDelete { .. } => {}
+            InputPromptKind::ConfirmDelete { .. } | InputPromptKind::ConfirmDeleteRemote { .. } => {}
         }
     }
 
@@ -2095,6 +3103,14 @@ impl AppState {
                         };
                     }
                     _ => {}
+                }
+            }
+            OverlayMode::PasswordPrompt { .. }
+            | OverlayMode::HostKeyConfirm { .. }
+            | OverlayMode::ConnectionManager { .. }
+            | OverlayMode::ConnectionEdit { .. } => {
+                if ev.kind == MouseEventKind::Down(MouseButton::Right) {
+                    self.overlay = OverlayMode::None;
                 }
             }
         }

@@ -23,9 +23,13 @@ trash = "3"
 zip = { version = "7", default-features = false, features = ["deflate", "time"] }
 time = { version = "0.3", default-features = false, features = ["std", "local-offset"] }
 encoding_rs = "0.8"
+# SFTP (remote file management). `ring` backend avoids aws-lc-rs's cmake/nasm build requirement on Windows.
+russh = { version = "0.64", default-features = false, features = ["ring", "rsa", "flate2"] }
+russh-sftp = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security_Credentials"] }
 
 [dev-dependencies]
 tempfile = "3"

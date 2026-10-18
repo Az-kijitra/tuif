@@ -7,8 +7,9 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Row, Ta
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{normalize_tree_key, AppState, ClipMode, FocusPane, OverlayMode};
+use crate::app::{normalize_tree_key, tree_node_key, AppState, ClipMode, FocusPane, OverlayMode};
 use crate::fs::query::EntryType;
+use crate::remote::profile::ConnectionProfile;
 
 /// Pure view rendering function (`coding-standards` §3: no side effects).
 pub fn draw(frame: &mut Frame, app: &AppState) {
@@ -41,6 +42,31 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
         OverlayMode::None | OverlayMode::Viewer { .. } => {}
         OverlayMode::Input { title, buffer, .. } => {
             draw_input_modal(frame, area, title, buffer);
+        }
+        OverlayMode::PasswordPrompt {
+            title,
+            buffer,
+            save_password,
+            ..
+        } => {
+            draw_password_prompt_modal(frame, area, title, buffer, *save_password);
+        }
+        OverlayMode::HostKeyConfirm {
+            endpoint,
+            fingerprint,
+        } => {
+            draw_host_key_confirm_modal(frame, area, endpoint, fingerprint);
+        }
+        OverlayMode::ConnectionManager { cursor } => {
+            draw_connection_manager_modal(frame, area, app, *cursor);
+        }
+        OverlayMode::ConnectionEdit {
+            is_new,
+            profile,
+            cursor,
+            password_buffer,
+        } => {
+            draw_connection_edit_modal(frame, area, *is_new, profile, *cursor, password_buffer);
         }
         OverlayMode::SortMenu { cursor } => {
             let items = vec![
@@ -125,7 +151,7 @@ fn draw_menu_bar(frame: &mut Frame, area: Rect, app: &AppState) {
 fn draw_path_and_search_bar(frame: &mut Frame, area: Rect, app: &AppState) {
     let mut lines = vec![Line::from(vec![
         Span::styled(" Path: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::raw(app.current_dir.to_string_lossy().into_owned()),
+        Span::raw(app.active_display_path()),
     ])];
     if !app.search_query.is_empty() {
         let mode_tag = if app.search_regex { "[Regex]" } else { "[Substr]" };
@@ -172,7 +198,11 @@ fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
         .skip(start_offset)
         .take(page_size)
         .map(|(i, node)| {
-            let is_current_dir = normalize_tree_key(&node.path) == current_dir_key;
+            let is_current_dir = if let (Some(session), Some(rdir)) = (&app.remote_session, &app.remote_dir) {
+                tree_node_key(node) == format!("remote:{}:{rdir}", session.profile.id)
+            } else {
+                node.remote.is_none() && normalize_tree_key(&node.path) == current_dir_key
+            };
             let indent = "  ".repeat(node.depth);
             let caret = if node.expanded { "▾ " } else { "▸ " };
             let text = format!("{indent}{caret}{}", node.name);
@@ -639,6 +669,7 @@ fn draw_menubar_dropdown(
             "History (Ctrl+Y)".to_string(),
             "Jump List (Ctrl+J)".to_string(),
             "Add to Jump List (m / Ctrl+Shift+J)".to_string(),
+            "SFTP Connections... (Ctrl+S)".to_string(),
         ],
     };
 
@@ -708,6 +739,211 @@ fn format_size(bytes: u64) -> String {
     } else {
         format!("{bytes} B")
     }
+}
+
+fn draw_password_prompt_modal(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    buffer: &str,
+    save_password: bool,
+) {
+    let width = 60.min(area.width.saturating_sub(4)).max(30);
+    let height = 6;
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+    let popup = Rect::new(x, y, width, height);
+    frame.render_widget(Clear, popup);
+
+    let masked: String = "*".repeat(buffer.len());
+    let save_tag = if save_password {
+        "[✓] Save password in Windows Credential Manager"
+    } else {
+        "[ ] Save password in Windows Credential Manager"
+    };
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(" Password: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(masked),
+            Span::styled("█", Style::default().fg(Color::Cyan)),
+        ]),
+        Line::from(vec![
+            Span::styled(format!(" {save_tag} (Tab to toggle)"), Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![
+            Span::styled(" [Enter] Connect  [Esc] Cancel", Style::default().fg(Color::Gray)),
+        ]),
+    ];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(format!(" {title} "));
+    frame.render_widget(Paragraph::new(lines).block(block), popup);
+}
+
+fn draw_host_key_confirm_modal(
+    frame: &mut Frame,
+    area: Rect,
+    endpoint: &str,
+    fingerprint: &str,
+) {
+    let width = 72.min(area.width.saturating_sub(4)).max(40);
+    let height = 9;
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+    let popup = Rect::new(x, y, width, height);
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::from(Span::styled("Unknown host key for:", Style::default().fg(Color::Yellow))),
+        Line::from(Span::styled(format!("  {endpoint}"), Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled("Fingerprint (SHA256):", Style::default().fg(Color::Yellow))),
+        Line::from(Span::styled(format!("  {fingerprint}"), Style::default().fg(Color::Cyan))),
+        Line::from(""),
+        Line::from(Span::styled("Trust this host? (y/Enter: Trust, n/Esc: Cancel)", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
+    ];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Red))
+        .title(" ⚠ Unknown Host Key ");
+    frame.render_widget(Paragraph::new(lines).block(block), popup);
+}
+
+fn draw_connection_manager_modal(
+    frame: &mut Frame,
+    area: Rect,
+    app: &AppState,
+    cursor: usize,
+) {
+    let width = 70.min(area.width.saturating_sub(4)).max(40);
+    let height = 14.min(area.height.saturating_sub(4)).max(8);
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+    let popup = Rect::new(x, y, width, height);
+    frame.render_widget(Clear, popup);
+
+    let inner_h = height.saturating_sub(4) as usize;
+    let page_size = inner_h.max(1);
+    let start_offset = (cursor / page_size) * page_size;
+
+    let items: Vec<ListItem> = if app.remote_profiles.is_empty() {
+        vec![ListItem::new("  (No profiles configured. Press 'a' to add new profile)")
+            .style(Style::default().fg(Color::DarkGray))]
+    } else {
+        app.remote_profiles
+            .iter()
+            .enumerate()
+            .skip(start_offset)
+            .take(page_size)
+            .map(|(i, p)| {
+                let sel = i == cursor;
+                let style = if sel {
+                    Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                let label = format!("  {}  ({}:{})", p.display_label(), p.host, p.port);
+                ListItem::new(label).style(style)
+            })
+            .collect()
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(2)])
+        .split(popup);
+
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(" SFTP Connection Profiles "),
+    );
+    frame.render_widget(list, chunks[0]);
+
+    let help = Paragraph::new(Line::from(vec![
+        Span::styled(
+            " [Enter] Connect  [a] Add  [e] Edit  [d] Delete  [Esc] Close ",
+            Style::default().fg(Color::Black).bg(Color::DarkGray),
+        ),
+    ]))
+    .block(
+        Block::default()
+            .borders(Borders::BOTTOM | Borders::LEFT | Borders::RIGHT)
+            .border_style(Style::default().fg(Color::Cyan)),
+    );
+    frame.render_widget(help, chunks[1]);
+}
+
+fn draw_connection_edit_modal(
+    frame: &mut Frame,
+    area: Rect,
+    is_new: bool,
+    profile: &ConnectionProfile,
+    cursor: usize,
+    password_buffer: &str,
+) {
+    let width = 64.min(area.width.saturating_sub(4)).max(40);
+    let height = 12;
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+    let popup = Rect::new(x, y, width, height);
+    frame.render_widget(Clear, popup);
+
+    let port_str = profile.port.to_string();
+    let pw_masked = "*".repeat(password_buffer.len());
+    let save_str = if profile.save_password {
+        "[✓] Yes (Space to toggle)"
+    } else {
+        "[ ] No (Space to toggle)"
+    };
+
+    let fields: [(&str, &str); 7] = [
+        ("Profile Name", profile.name.as_str()),
+        ("Host / IP", profile.host.as_str()),
+        ("Port", &port_str),
+        ("Username", profile.user.as_str()),
+        ("Password", &pw_masked),
+        ("Save Password", save_str),
+        ("Initial Dir", profile.initial_dir.as_str()),
+    ];
+
+    let lines: Vec<Line> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, (label, val))| {
+            let is_cur = i == cursor;
+            let label_style = if is_cur {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            let val_style = if is_cur {
+                Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            Line::from(vec![
+                Span::styled(format!("  {:14}: ", label), label_style),
+                Span::styled(format!(" {} ", if val.is_empty() { "(empty)" } else { val }), val_style),
+            ])
+        })
+        .collect();
+
+    let title = if is_new {
+        " New SFTP Profile "
+    } else {
+        " Edit SFTP Profile "
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(format!("{title}(Tab/Down:Next, Enter:Save, Esc:Cancel) "));
+
+    frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
 #[cfg(test)]

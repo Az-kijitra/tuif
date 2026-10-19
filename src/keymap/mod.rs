@@ -47,6 +47,8 @@ pub enum ActionId {
     FuzzyFindFile,
     FuzzyLiveGrep,
     FuzzyJumpDir,
+    OpenDefault,
+    ExitAndCd,
 }
 
 impl ActionId {
@@ -89,6 +91,8 @@ impl ActionId {
         ActionId::FuzzyFindFile,
         ActionId::FuzzyLiveGrep,
         ActionId::FuzzyJumpDir,
+        ActionId::OpenDefault,
+        ActionId::ExitAndCd,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -107,6 +111,7 @@ impl ActionId {
             ActionId::Open => "open",
             ActionId::GoParent => "go_parent",
             ActionId::Exit => "exit",
+            ActionId::ExitAndCd => "exit_and_cd",
             ActionId::FocusPath => "focus_path",
             ActionId::ToggleHidden => "toggle_hidden",
             ActionId::ToggleTree => "toggle_tree",
@@ -132,6 +137,7 @@ impl ActionId {
             ActionId::FuzzyFindFile => "fuzzy_find_file",
             ActionId::FuzzyLiveGrep => "fuzzy_live_grep",
             ActionId::FuzzyJumpDir => "fuzzy_jump_dir",
+            ActionId::OpenDefault => "open_default",
         }
     }
 
@@ -154,7 +160,8 @@ impl ActionId {
             ActionId::ClearSelection => "Escape",
             ActionId::Open => "Enter",
             ActionId::GoParent => "Backspace,Minus",
-            ActionId::Exit => "Q,Ctrl+Q",
+            ActionId::Exit => "Q",
+            ActionId::ExitAndCd => "Ctrl+Q",
             ActionId::FocusPath => "Ctrl+L",
             ActionId::ToggleHidden => "Dot,Ctrl+H",
             ActionId::ToggleTree => "T,Ctrl+Shift+B",
@@ -180,6 +187,7 @@ impl ActionId {
             ActionId::FuzzyFindFile => "Ctrl+P,Ctrl+F",
             ActionId::FuzzyLiveGrep => "Ctrl+G,Shift+F",
             ActionId::FuzzyJumpDir => "Alt+C,F",
+            ActionId::OpenDefault => "O,Shift+Enter",
         }
     }
 }

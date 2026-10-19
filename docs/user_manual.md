@@ -17,7 +17,7 @@
    - [5.1 登録済みツール一覧](#51-登録済みツール一覧)
    - [5.2 `fzf` + `ripgrep` による高速ファジー検索・全文検索](#52-fzf--ripgrep-による高速ファジー検索全文検索)
    - [5.3 外部アプリのカスタマイズ (`config.toml`)](#53-外部アプリのカスタマイズ-configtoml)
-6. [PowerShell カレントディレクトリ追従 (`cd on exit`)](#6-powershell-カレントディレクトリ追従-cd-on-exit)
+6. [【オプション】PowerShell カレントディレクトリ追従の設定方法と使い方 (`cd on exit`)](#6-オプションpowershell-カレントディレクトリ追従の設定方法と使い方-cd-on-exit)
 7. [SFTP リモート接続・ファイル管理 (WinSCP ライク機能)](#7-sftp-リモート接続ファイル管理-winscp-ライク機能)
    - [7.1 接続プロファイル管理 (`Ctrl+S`)](#71-接続プロファイル管理-ctrls)
    - [7.2 ホスト鍵の確認 (TOFU: Trust on First Use)](#72-ホスト鍵の確認-tofu-trust-on-first-use)
@@ -90,6 +90,7 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | すべて選択 | `V` (`Shift+V`) または `Ctrl+A` | `select_all` |
 | 選択解除 / 検索クリア | `Esc` | `clear_selection` |
 | 開く (フォルダ移動 / 内蔵ビューア) | `Enter` | `open` |
+| Windows の既定のアプリで開く (ダブルクリック相当) | `o` または `Shift+Enter` | `open_default` |
 | 親フォルダーへ | `Backspace` または `-` | `go_parent` |
 | パス欄へ直接入力 | `Ctrl+L` | `focus_path` |
 | 検索フィルタ (現在のフォルダ内) | `/` (入力中に `Ctrl+R` で正規表現切替) | `search` |
@@ -117,7 +118,8 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | アクションメニュー | `;` または `F9` | `action_menu` |
 | SFTP 接続マネージャー | `Ctrl+S` | `connection_manager` |
 | メニューバーを開く | `F10` または `Alt+F` / `Alt+E` / `Alt+V` / `Alt+G` | (固定) |
-| 終了 | `q` または `Ctrl+Q` | `exit` |
+| 終了 (ディレクトリ移動せず終了) | `q` | `exit` |
+| カレントディレクトリを変更して終了 (`cd on exit`) | `Ctrl+Q` | `exit_and_cd` |
 
 ### 3.2 マウス操作 (Windows エクスプローラー互換)
 
@@ -127,7 +129,7 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | **ファイル一覧 (`Files`)** | `Ctrl` + 左クリック | クリックした項目の選択状態をトグル（複数選択） |
 | **ファイル一覧 (`Files`)** | `Shift` + 左クリック | 直前のカーソル位置からクリック位置までを範囲選択 |
 | **ファイル一覧 (`Files`)** | ダブルクリック | フォルダへ移動 / ファイルを内蔵ビューアで開く |
-| **ファイル一覧 (`Files`)** | 右クリック | 対象項目にフォーカスを合わせ、**アクションメニュー**（開く・コピー・切り取り・貼り付け・リネーム・削除・ZIP圧縮/展開・外部CUI/GUIアプリ起動）を表示 |
+| **ファイル一覧 (`Files`)** | 右クリック | 対象項目にフォーカスを合わせ、**アクションメニュー**（開く・既定のアプリで開く・コピー・切り取り・貼り付け・リネーム・削除・ZIP圧縮/展開・外部CUI/GUIアプリ起動）を表示 |
 | **ファイル一覧 / ツリー / ビューア** | マウスホイール上下 | カーソル移動 / スクロール |
 | **ドライブ・ツリー (`Drives / Tree`)** | `▸` / `▾` を左クリック | フォルダの展開・折畳を切り替え |
 | **ドライブ・ツリー (`Drives / Tree`)** | フォルダ名を左クリック | そのフォルダを開く（ダブルクリックで展開・折畳も切替） |
@@ -176,6 +178,15 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | `[GUI]` | **Open VSCode** | `Ctrl+Alt+O` | `Code.exe {path}` |
 | `[GUI]` | **Open Explorer** | `Ctrl+Alt+E` | `explorer.exe {dir}` (フォルダ選択時) / `explorer.exe /select,{path}` (ファイル選択時) |
 
+#### Windows の既定のアプリで開く (`o` / `Shift+Enter`)
+
+右クリックのアクションメニュー（**`Open with Default App`**）、メニューバーの **`File (Alt+F)` → `Open with Default App`**、またはショートカットキー `o` / `Shift+Enter` で、選択中の項目を **Windows に関連付けられた既定のアプリ** で開きます（エクスプローラーでのダブルクリックと同じ動作）。
+
+- **ファイル**: 拡張子に関連付けられたアプリ（例: `.pdf` → PDF ビューア、`.xlsx` → Excel、`.png` → フォト）で開きます。関連付けが無い場合は「プログラムから開く」ダイアログが表示されます。
+- **フォルダ**: エクスプローラーでそのフォルダを開きます（ツリーペインで選択中のフォルダも対象）。
+- **リモート (SFTP) ファイル**: 一時フォルダ (`%TEMP%\tuif-remote\<プロファイルID>\`) へダウンロードしてから既定のアプリで開きます（編集内容はサーバーへ自動アップロードされません）。リモートフォルダは対象外です。
+- `tuif` の画面は維持されたまま、アプリは別ウィンドウで非ブロッキング起動します。
+
 ### 5.2 `fzf` + `ripgrep` による高速ファジー検索・全文検索
 
 現在開いているローカルフォルダ（またはツリーで選択中のローカルフォルダ）を起点に、`fzf`、`ripgrep` (`rg`)、`bat` を組み合わせた3種類のインタラクティブ検索を実行できます（メニューバーの **`Go (Alt+G)`** からも実行可能）。
@@ -219,27 +230,63 @@ is_gui = false
 
 ---
 
-## 6. PowerShell カレントディレクトリ追従 (`cd on exit`)
+## 6. 【オプション】PowerShell カレントディレクトリ追従の設定方法と使い方 (`cd on exit`)
 
-PowerShell の `$PROFILE` に以下のラッパー関数を追加すると、`tf` コマンドで `tuif` を起動し、`q` で終了した際に最後に開いていたフォルダへ PowerShell のカレントディレクトリが自動で移動します。
+本機能は **必須の設定ではありません**。通常、`tuif`（または `tuif.exe`）を直接起動して使用する分には設定不要です。
+
+Windows OS の仕組み上、実行中の子プロセス（`.exe`）が親プロセス（呼び出し元の PowerShell）のカレントディレクトリを直接書き換えることはできません。  
+そのため、「**`tuif` でフォルダーを巡回したあと、`Ctrl+Q` で終了した時だけ PowerShell 側のカレントディレクトリもそのフォルダーへ移動させたい**」という場合のみ、以下のシェル関数を設定します。
+
+### 6.1 設定方法 (PowerShell `$PROFILE`)
+
+PowerShell のプロファイルファイル（`$PROFILE`）に以下の関数とエイリアスを追記します。
 
 ```powershell
+# tuif (cuifiler): cd on exit ラッパー関数
 function Invoke-Tuif {
     $tmp = [System.IO.Path]::GetTempFileName()
     try {
-        & "C:\Users\toshi\git\tuif\target\release\tuif.exe" --choosedir $tmp @args
+        # tuif を終了時パス受取用の一時ファイル指定付きで呼び出し
+        tuif --choosedir $tmp @args
+
+        # Ctrl+Q で終了した場合のみ一時ファイルにパスが書き込まれる
         if (Test-Path $tmp) {
-            $cwd = Get-Content -Path $tmp -Raw -Encoding UTF8
-            if (-not [string]::IsNullOrWhiteSpace($cwd) -and (Test-Path $cwd)) {
+            $cwd = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8
+            if (-not [string]::IsNullOrWhiteSpace($cwd) -and (Test-Path $cwd.Trim())) {
                 Set-Location -LiteralPath $cwd.Trim()
             }
         }
     } finally {
-        Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     }
 }
+
+# 短縮エイリアス 'tf' を登録
 Set-Alias -Name tf -Value Invoke-Tuif
 ```
+
+> **設定の反映**:
+> 追記後、PowerShell を再起動するか、`. $PROFILE` を実行して設定を再読み込みしてください。
+
+---
+
+### 6.2 使い方
+
+設定後は、PowerShell 上で **`tf`** コマンドを使って起動します。
+
+```powershell
+# カレントディレクトリで開く
+tf
+
+# 指定したフォルダーを開く
+tf C:\Users\username\Projects
+```
+
+#### 終了キーに応じた挙動の違い:
+| 終了操作 | キー | 動作 |
+|---|---|---|
+| **通常の終了** | **`q`**（またはメニューバーの `File` → `Exit`） | **起動元のフォルダーのまま**終了します（PowerShell のカレントディレクトリは変わりません）。 |
+| **フォルダー移動して終了** | **`Ctrl+Q`**（またはメニューバーの `File` → `Exit & Cd`） | **`tuif` で現在開いているフォルダーへ PowerShell のカレントディレクトリを移動して終了**します。 |
 
 ---
 

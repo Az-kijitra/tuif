@@ -27,6 +27,10 @@ use crate::shared::schema::navigation::NavigationData;
 use crate::shared::schema::ui_state::UiStateData;
 use crate::viewer::{classify, text};
 
+/// Number of fixed items in the right-click ActionMenu (before the external app entries).
+/// Order: Open, Open with Default App, Copy, Cut, Paste, Rename, Delete, New File, New Folder, Create ZIP, Extract ZIP.
+pub const ACTION_MENU_FIXED_COUNT: usize = 11;
+
 /// Snapshot of the file transfer progress for display in the TUI modal.
 #[derive(Debug, Clone)]
 pub struct TransferProgressState {
@@ -284,6 +288,7 @@ pub struct AppState {
     pub overlay: OverlayMode,
     pub status_message: String,
     pub should_quit: bool,
+    pub should_cd_on_exit: bool,
     pub pending_launch: Option<PendingExternalLaunch>,
     pub pending_fuzzy: Option<PendingFuzzySearch>,
     pub remote_profiles: Vec<ConnectionProfile>,
@@ -373,6 +378,7 @@ impl AppState {
             overlay: OverlayMode::None,
             status_message,
             should_quit: false,
+            should_cd_on_exit: false,
             pending_launch: None,
             pending_fuzzy: None,
             remote_profiles,
@@ -1422,6 +1428,11 @@ impl AppState {
             }
             ActionId::Exit => {
                 self.should_quit = true;
+                self.should_cd_on_exit = false;
+            }
+            ActionId::ExitAndCd => {
+                self.should_quit = true;
+                self.should_cd_on_exit = true;
             }
             ActionId::FocusPath => {
                 let buf = self.active_display_path();
@@ -1672,6 +1683,9 @@ impl AppState {
             }
             ActionId::FuzzyJumpDir => {
                 self.trigger_fuzzy_search(FuzzyKind::JumpDir);
+            }
+            ActionId::OpenDefault => {
+                self.open_focused_with_default_app();
             }
         }
     }
@@ -2347,6 +2361,60 @@ impl AppState {
         });
     }
 
+    /// Opens the focused item (or Tree node) with the Windows default associated application.
+    /// Remote files are downloaded to a temp folder first; remote folders are not supported.
+    pub fn open_focused_with_default_app(&mut self) {
+        let local_target: PathBuf = if self.focus_pane == FocusPane::Tree {
+            let Some(node) = self.tree_nodes.get(self.tree_cursor) else {
+                return;
+            };
+            if node.remote.is_some() {
+                self.status_message =
+                    "Open with default app is not available for remote folders".to_string();
+                return;
+            }
+            node.path.clone()
+        } else if self.is_remote() {
+            let Some(entry) = self.focused_entry().cloned() else {
+                return;
+            };
+            if entry.entry_type == EntryType::Dir {
+                self.status_message =
+                    "Open with default app is not available for remote folders".to_string();
+                return;
+            }
+            let Some(session) = &self.remote_session else {
+                return;
+            };
+            let remote_path = entry.path.to_string_lossy().into_owned();
+            let temp_dir = std::env::temp_dir()
+                .join("tuif-remote")
+                .join(&session.profile.id);
+            let _ = std::fs::create_dir_all(&temp_dir);
+            let file_name = rpath::file_name(&remote_path);
+            let local_temp =
+                temp_dir.join(crate::remote::session::sanitize_windows_name(&file_name));
+            if let Err(e) = session.download(&remote_path, &local_temp) {
+                self.status_message = format!("Download failed: {e}");
+                return;
+            }
+            local_temp
+        } else if let Some(entry) = self.focused_entry() {
+            entry.path.clone()
+        } else {
+            return;
+        };
+
+        let name = local_target
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| local_target.to_string_lossy().into_owned());
+        match crate::external_apps::open_with_default_app(&local_target) {
+            Ok(()) => self.status_message = format!("Opened with default app: {name}"),
+            Err(e) => self.status_message = e,
+        }
+    }
+
     fn open_in_viewer(&mut self, path: &Path) {
         use std::io::Read;
         let ext = classify::extension_of(path);
@@ -2580,7 +2648,7 @@ impl AppState {
                 _ => {}
             },
             OverlayMode::ActionMenu { mut cursor } => {
-                let total = 10 + self.external_apps.len();
+                let total = ACTION_MENU_FIXED_COUNT + self.external_apps.len();
                 match ev.code {
                     KeyCode::Esc | KeyCode::Char('q') => self.overlay = OverlayMode::None,
                     KeyCode::Up | KeyCode::Char('k') => {
@@ -2593,19 +2661,7 @@ impl AppState {
                     }
                     KeyCode::Enter => {
                         self.overlay = OverlayMode::None;
-                        match cursor {
-                            0 => self.execute_action(ActionId::Open),
-                            1 => self.execute_action(ActionId::Copy),
-                            2 => self.execute_action(ActionId::Cut),
-                            3 => self.execute_action(ActionId::Paste),
-                            4 => self.execute_action(ActionId::Rename),
-                            5 => self.execute_action(ActionId::Delete),
-                            6 => self.execute_action(ActionId::NewFile),
-                            7 => self.execute_action(ActionId::NewFolder),
-                            8 => self.execute_action(ActionId::ZipCreate),
-                            9 => self.execute_action(ActionId::ZipExtract),
-                            ext_idx => self.trigger_external_app(ext_idx - 10),
-                        }
+                        self.execute_action_menu_item(cursor);
                     }
                     _ => {}
                 }
@@ -2614,7 +2670,7 @@ impl AppState {
                 mut cat_idx,
                 mut item_idx,
             } => {
-                let cat_counts = [8usize + self.external_apps.len(), 6, 5, 9];
+                let cat_counts = [10usize + self.external_apps.len(), 6, 5, 9];
                 match ev.code {
                     KeyCode::Esc | KeyCode::Char('q') => self.overlay = OverlayMode::None,
                     KeyCode::Left | KeyCode::Char('h') => {
@@ -3021,18 +3077,20 @@ impl AppState {
     fn execute_menubar_item(&mut self, cat_idx: usize, item_idx: usize) {
         match cat_idx {
             0 => {
-                // File: Open, New File, New Folder, Rename, Delete, Create ZIP, Extract ZIP, [External CUI tools...], Exit
+                // File: Open, Open with Default App, New File, New Folder, Rename, Delete, Create ZIP, Extract ZIP, [External CUI tools...], Exit, Exit & Cd
                 let ext_count = self.external_apps.len();
                 match item_idx {
                     0 => self.execute_action(ActionId::Open),
-                    1 => self.execute_action(ActionId::NewFile),
-                    2 => self.execute_action(ActionId::NewFolder),
-                    3 => self.execute_action(ActionId::Rename),
-                    4 => self.execute_action(ActionId::Delete),
-                    5 => self.execute_action(ActionId::ZipCreate),
-                    6 => self.execute_action(ActionId::ZipExtract),
-                    i if i >= 7 && i < 7 + ext_count => self.trigger_external_app(i - 7),
-                    _ => self.execute_action(ActionId::Exit),
+                    1 => self.execute_action(ActionId::OpenDefault),
+                    2 => self.execute_action(ActionId::NewFile),
+                    3 => self.execute_action(ActionId::NewFolder),
+                    4 => self.execute_action(ActionId::Rename),
+                    5 => self.execute_action(ActionId::Delete),
+                    6 => self.execute_action(ActionId::ZipCreate),
+                    7 => self.execute_action(ActionId::ZipExtract),
+                    i if i >= 8 && i < 8 + ext_count => self.trigger_external_app(i - 8),
+                    i if i == 8 + ext_count => self.execute_action(ActionId::Exit),
+                    _ => self.execute_action(ActionId::ExitAndCd),
                 }
             }
             1 => match item_idx {
@@ -3245,16 +3303,17 @@ impl AppState {
     fn execute_action_menu_item(&mut self, cursor: usize) {
         match cursor {
             0 => self.execute_action(ActionId::Open),
-            1 => self.execute_action(ActionId::Copy),
-            2 => self.execute_action(ActionId::Cut),
-            3 => self.execute_action(ActionId::Paste),
-            4 => self.execute_action(ActionId::Rename),
-            5 => self.execute_action(ActionId::Delete),
-            6 => self.execute_action(ActionId::NewFile),
-            7 => self.execute_action(ActionId::NewFolder),
-            8 => self.execute_action(ActionId::ZipCreate),
-            9 => self.execute_action(ActionId::ZipExtract),
-            ext_idx => self.trigger_external_app(ext_idx - 10),
+            1 => self.execute_action(ActionId::OpenDefault),
+            2 => self.execute_action(ActionId::Copy),
+            3 => self.execute_action(ActionId::Cut),
+            4 => self.execute_action(ActionId::Paste),
+            5 => self.execute_action(ActionId::Rename),
+            6 => self.execute_action(ActionId::Delete),
+            7 => self.execute_action(ActionId::NewFile),
+            8 => self.execute_action(ActionId::NewFolder),
+            9 => self.execute_action(ActionId::ZipCreate),
+            10 => self.execute_action(ActionId::ZipExtract),
+            ext_idx => self.trigger_external_app(ext_idx - ACTION_MENU_FIXED_COUNT),
         }
     }
 
@@ -3517,7 +3576,7 @@ impl AppState {
                 }
             }
             OverlayMode::ActionMenu { mut cursor } => {
-                let total = 10 + self.external_apps.len();
+                let total = ACTION_MENU_FIXED_COUNT + self.external_apps.len();
                 let (popup, start_offset, page_size) =
                     crate::tui::popup_list_geometry(area, total, cursor);
                 let in_inner = ev.column > popup.x
@@ -3709,7 +3768,7 @@ impl AppState {
                     return;
                 }
 
-                let cat_counts = [8usize + self.external_apps.len(), 6, 5, 9];
+                let cat_counts = [10usize + self.external_apps.len(), 6, 5, 9];
                 let total = cat_counts[cat_idx];
                 let rect = crate::tui::menubar_dropdown_rect(area, cat_idx, total);
                 let in_inner = ev.column > rect.x

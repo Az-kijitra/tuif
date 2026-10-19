@@ -17,6 +17,41 @@ fn key_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
 }
 
 #[test]
+fn open_default_app_default_bindings() {
+    use cuifiler::keymap::{ActionId, KeyChord, Keymap};
+    let (mut km, rejected) = Keymap::from_custom(&[]);
+    assert!(rejected.is_empty());
+    for ev in [key(KeyCode::Char('o')), key_mod(KeyCode::Enter, KeyModifiers::SHIFT)] {
+        let chord = KeyChord::from_crossterm(ev).unwrap();
+        assert_eq!(km.resolve(&chord), Some(ActionId::OpenDefault), "{chord:?}");
+    }
+    // Plain Enter must still be the built-in Open
+    let enter = KeyChord::from_crossterm(key(KeyCode::Enter)).unwrap();
+    assert_eq!(km.resolve(&enter), Some(ActionId::Open));
+}
+
+#[test]
+fn exit_and_cd_keybindings_and_state() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let mut app = AppState::new(root.to_path_buf());
+
+    // 'q' sets should_quit = true and should_cd_on_exit = false
+    app.handle_key_event(key(KeyCode::Char('q')));
+    assert!(app.should_quit);
+    assert!(!app.should_cd_on_exit);
+
+    // Reset flags
+    app.should_quit = false;
+    app.should_cd_on_exit = false;
+
+    // 'Ctrl+Q' sets should_quit = true and should_cd_on_exit = true
+    app.handle_key_event(key_mod(KeyCode::Char('q'), KeyModifiers::CONTROL));
+    assert!(app.should_quit);
+    assert!(app.should_cd_on_exit);
+}
+
+#[test]
 fn vim_navigation_and_file_ops_workflow() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
@@ -240,18 +275,22 @@ fn mouse_explorer_workflow_left_double_and_right_click_action_menu() {
     assert_eq!(app.focused_entry().unwrap().name, "alpha.txt");
     assert_eq!(app.overlay, OverlayMode::ActionMenu { cursor: 0 });
 
-    // Click row 1 of ActionMenu ("Copy / Yank (y)") -> yanks `alpha.txt` and closes ActionMenu
+    // Click row 2 of ActionMenu ("Copy / Yank (y)") -> yanks `alpha.txt` and closes ActionMenu
     let area = ratatui::layout::Rect {
         x: 0,
         y: 0,
         width: 100,
         height: 28,
     };
-    let (popup, _, _) = tui::popup_list_geometry(area, 10 + app.external_apps.len(), 0);
+    let (popup, _, _) = tui::popup_list_geometry(
+        area,
+        cuifiler::app::ACTION_MENU_FIXED_COUNT + app.external_apps.len(),
+        0,
+    );
     app.handle_mouse_event(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: popup.x + 3,
-        row: popup.y + 1 + 1, // item index 1 = Copy / Yank
+        row: popup.y + 1 + 2, // item index 2 = Copy / Yank
         modifiers: KeyModifiers::NONE,
     });
     assert_eq!(app.overlay, OverlayMode::None);
@@ -317,18 +356,22 @@ fn tree_right_click_action_menu_and_gui_apps_workflow() {
     assert_eq!(app.overlay, OverlayMode::ActionMenu { cursor: 0 });
     assert_eq!(app.operation_targets(), vec![dir_b.clone()]);
 
-    // Select item 4 ("Rename (r)") in ActionMenu -> opens Rename prompt targeting `beta_dir`
+    // Select item 5 ("Rename (r)") in ActionMenu -> opens Rename prompt targeting `beta_dir`
     let area = ratatui::layout::Rect {
         x: 0,
         y: 0,
         width: 100,
         height: 28,
     };
-    let (popup, _, _) = tui::popup_list_geometry(area, 10 + app.external_apps.len(), 0);
+    let (popup, _, _) = tui::popup_list_geometry(
+        area,
+        cuifiler::app::ACTION_MENU_FIXED_COUNT + app.external_apps.len(),
+        0,
+    );
     app.handle_mouse_event(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: popup.x + 3,
-        row: popup.y + 1 + 4, // item index 4 = Rename
+        row: popup.y + 1 + 5, // item index 5 = Rename
         modifiers: KeyModifiers::NONE,
     });
     assert_eq!(

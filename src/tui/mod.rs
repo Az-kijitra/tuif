@@ -100,6 +100,7 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
         OverlayMode::ActionMenu { cursor } => {
             let mut items = vec![
                 "Open (Enter)".to_string(),
+                "Open with Default App (o / Shift+Enter)".to_string(),
                 "Copy / Yank (y)".to_string(),
                 "Cut (x)".to_string(),
                 "Paste (p)".to_string(),
@@ -646,6 +647,7 @@ fn draw_menubar_dropdown(
         0 => {
             let mut v = vec![
                 "Open (Enter)".to_string(),
+                "Open with Default App (o / Shift+Enter)".to_string(),
                 "New File... (a / Ctrl+N)".to_string(),
                 "New Folder... (A / Ctrl+Shift+N)".to_string(),
                 "Rename (r / F2)".to_string(),
@@ -656,7 +658,8 @@ fn draw_menubar_dropdown(
             for ext in &app.external_apps {
                 v.push(format!("{} ({})", ext.name, ext.key_label));
             }
-            v.push("Exit (q / Ctrl+Q)".to_string());
+            v.push("Exit (q)".to_string());
+            v.push("Exit & Cd (Ctrl+Q)".to_string());
             v
         }
         1 => vec![

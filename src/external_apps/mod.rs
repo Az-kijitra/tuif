@@ -1,6 +1,8 @@
 //! `external_apps/` — CUI external tool registration (`pwsh`, `nvim`, `lazygit`, `bat`),
 //! argument substitution (`{path}`, `{dir}`), executable resolution, and launching (SPEC-0300-0001 §3).
 
+#![allow(unsafe_code)]
+
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -259,6 +261,74 @@ pub fn spawn_gui_nonblocking(exe: &Path, args: &[String], working_dir: &Path) ->
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Failed to launch '{}': {e}", exe.display()))
+}
+
+/// Opens `path` with the Windows default associated application (same as double-clicking in Explorer).
+/// Uses `ShellExecuteW` with the default verb; if no association exists, shows the "Open with" dialog.
+#[cfg(windows)]
+pub fn open_with_default_app(path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    const SE_ERR_NOASSOC: isize = 31;
+
+    let to_wide = |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain(std::iter::once(0)).collect() };
+    let file_w = to_wide(path.as_os_str());
+    let dir_w = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| to_wide(p.as_os_str()));
+    let dir_ptr = dir_w.as_ref().map_or(std::ptr::null(), |d| d.as_ptr());
+
+    // SAFETY: all string pointers are valid NUL-terminated UTF-16 buffers that outlive the call.
+    let ret = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            file_w.as_ptr(),
+            std::ptr::null(),
+            dir_ptr,
+            SW_SHOWNORMAL,
+        )
+    } as isize;
+    if ret > 32 {
+        return Ok(());
+    }
+    if ret == SE_ERR_NOASSOC {
+        let verb_w = to_wide(std::ffi::OsStr::new("openas"));
+        // SAFETY: same as above.
+        let ret2 = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                verb_w.as_ptr(),
+                file_w.as_ptr(),
+                std::ptr::null(),
+                dir_ptr,
+                SW_SHOWNORMAL,
+            )
+        } as isize;
+        if ret2 > 32 {
+            return Ok(());
+        }
+    }
+    Err(format!(
+        "Failed to open '{}' with default app (ShellExecute error {ret})",
+        path.display()
+    ))
+}
+
+#[cfg(not(windows))]
+pub fn open_with_default_app(path: &Path) -> Result<(), String> {
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    Command::new(opener)
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open '{}': {e}", path.display()))
 }
 
 /// Runs the resolved CUI process synchronously with inherited stdio (caller suspends TUI before calling).

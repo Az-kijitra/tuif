@@ -183,8 +183,10 @@ fn main() -> io::Result<()> {
 
     restore_terminal();
 
-    if let Some(out_file) = cli.choosedir_file {
-        let _ = fs::write(out_file, app.current_dir.to_string_lossy().as_bytes());
+    if app.should_cd_on_exit {
+        if let Some(out_file) = cli.choosedir_file {
+            let _ = fs::write(out_file, app.current_dir.to_string_lossy().as_bytes());
+        }
     }
 
     Ok(())

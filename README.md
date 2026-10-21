@@ -1,7 +1,7 @@
 # tuif
 
 `tuif` は、Windows PowerShell 環境で軽快に動作する **Rust + Ratatui** 製のキーボード主体 (Vim-like) CUI/TUI ファイラーです。
-GUI ファイラー「ReflexFiles」の画面構成・ファイル操作・ZIP 圧縮展開・履歴・検索・内蔵テキストビューアを踏襲しつつ、外部 CUI ツール連携 (`pwsh`, `nvim`, `lazygit`, `bat`) や PowerShell のカレントディレクトリ追従 (`cd on exit`) に特化しています。
+GUI ファイラー「guif」の画面構成・ファイル操作・ZIP 圧縮展開・履歴・検索・内蔵テキストビューアを踏襲しつつ、外部 CUI ツール連携 (`pwsh`, `nvim`, `lazygit`, `bat`) や PowerShell のカレントディレクトリ追従 (`cd on exit`) に特化しています。
 
 ## 主な特徴
 
@@ -30,7 +30,7 @@ cargo build --release
 function Invoke-Tuif {
     $tmp = [System.IO.Path]::GetTempFileName()
     try {
-        & "C:\Users\toshi\git\tuif\target\release\tuif.exe" --choosedir $tmp @args
+        & "C:\Users\az\git\tuif\target\release\tuif.exe" --choosedir $tmp @args
         if (Test-Path $tmp) {
             $cwd = Get-Content -Path $tmp -Raw -Encoding UTF8
             if (-not [string]::IsNullOrWhiteSpace($cwd) -and (Test-Path $cwd)) {

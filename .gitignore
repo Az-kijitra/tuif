@@ -3,3 +3,8 @@
 *.pdb
 .DS_Store
 Thumbs.db
+PLAN.md
+GEMINI.md
+/docs/architecture
+/docs/development_plan_config_customization.md
+/docs/dev-pipleine

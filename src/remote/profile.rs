@@ -1,4 +1,4 @@
-//! SFTP connection profiles persisted in `%APPDATA%\cuifiler\connections.toml`.
+//! SFTP connection profiles persisted in `%APPDATA%\tuif\connections.toml`.
 //!
 //! Passwords are never written here; when `save_password` is set they live in the
 //! Windows Credential Manager under [`ConnectionProfile::credential_target`].

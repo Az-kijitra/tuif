@@ -105,18 +105,90 @@ pub fn fs_list_dir(
     Ok(entries)
 }
 
+pub fn fs_list_dir_with_options(
+    path: &Path,
+    show_hidden: bool,
+    sort_key: &str,
+    sort_order: &str,
+    dirs_first: bool,
+    natural_sort: bool,
+) -> io::Result<Vec<Entry>> {
+    let mut entries = Vec::new();
+
+    for dir_entry in std::fs::read_dir(path)? {
+        let dir_entry = dir_entry?;
+        let name = dir_entry.file_name().to_string_lossy().into_owned();
+        let hidden = is_hidden_name(&name);
+
+        if hidden && !show_hidden {
+            continue;
+        }
+
+        let metadata = dir_entry.metadata()?;
+        let is_dir = metadata.is_dir();
+        let entry_type = if is_dir { EntryType::Dir } else { EntryType::File };
+        let size = if is_dir { 0 } else { metadata.len() };
+        let modified = metadata
+            .modified()
+            .map(format_modified)
+            .unwrap_or_default();
+        let ext = extract_ext(&name, is_dir);
+
+        entries.push(Entry {
+            name,
+            path: dir_entry.path(),
+            entry_type,
+            size,
+            modified,
+            ext,
+            hidden,
+        });
+    }
+
+    sort_entries_with_options(&mut entries, sort_key, sort_order, dirs_first, natural_sort);
+
+    Ok(entries)
+}
+
 pub fn sort_entries(entries: &mut [Entry], sort_key: &str, sort_order: &str) {
+    sort_entries_with_options(entries, sort_key, sort_order, sort_key == "type", false);
+}
+
+pub fn sort_entries_with_options(
+    entries: &mut [Entry],
+    sort_key: &str,
+    sort_order: &str,
+    dirs_first: bool,
+    natural_sort: bool,
+) {
     entries.sort_by(|a, b| {
+        if dirs_first {
+            let a_is_dir = a.entry_type == EntryType::Dir;
+            let b_is_dir = b.entry_type == EntryType::Dir;
+            match (a_is_dir, b_is_dir) {
+                (true, false) => return Ordering::Less,
+                (false, true) => return Ordering::Greater,
+                _ => {}
+            }
+        }
+
         let ordering = match sort_key {
             // R-33: case-insensitive name comparison.
             "size" => a.size.cmp(&b.size),
             // R-33: dirs first, then (lowercased) extension, then (lowercased) name.
-            "type" => compare_type(a, b),
+            "type" => compare_type_with_options(a, b, dirs_first, natural_sort),
             // R-33: modified compared as a string.
             "modified" => a.modified.cmp(&b.modified),
             // "name" (and any unrecognized key defaults to name, per R-30).
-            _ => compare_name(a, b),
+            _ => {
+                if natural_sort {
+                    compare_natural(&a.name, &b.name)
+                } else {
+                    compare_name(a, b)
+                }
+            }
         };
+
         if sort_order == "desc" {
             ordering.reverse()
         } else {
@@ -129,24 +201,88 @@ fn compare_name(a: &Entry, b: &Entry) -> Ordering {
     a.name.to_lowercase().cmp(&b.name.to_lowercase())
 }
 
-fn compare_type(a: &Entry, b: &Entry) -> Ordering {
-    let a_is_dir = a.entry_type == EntryType::Dir;
-    let b_is_dir = b.entry_type == EntryType::Dir;
-
-    // Directories are grouped first: a Dir (false=0 when negated) sorts
-    // before a File.
-    match (a_is_dir, b_is_dir) {
-        (true, false) => return Ordering::Less,
-        (false, true) => return Ordering::Greater,
-        _ => {}
+fn compare_type_with_options(a: &Entry, b: &Entry, dirs_first: bool, natural_sort: bool) -> Ordering {
+    if dirs_first {
+        let a_is_dir = a.entry_type == EntryType::Dir;
+        let b_is_dir = b.entry_type == EntryType::Dir;
+        match (a_is_dir, b_is_dir) {
+            (true, false) => return Ordering::Less,
+            (false, true) => return Ordering::Greater,
+            _ => {}
+        }
     }
 
-    let ext_cmp = a.ext.to_lowercase().cmp(&b.ext.to_lowercase());
+    let ext_cmp = if natural_sort {
+        compare_natural(&a.ext, &b.ext)
+    } else {
+        a.ext.to_lowercase().cmp(&b.ext.to_lowercase())
+    };
     if ext_cmp != Ordering::Equal {
         return ext_cmp;
     }
 
-    compare_name(a, b)
+    if natural_sort {
+        compare_natural(&a.name, &b.name)
+    } else {
+        compare_name(a, b)
+    }
+}
+
+/// Natural (alphanumeric) sorting comparison.
+/// E.g. "file2.txt" comes before "file10.txt".
+pub fn compare_natural(a: &str, b: &str) -> Ordering {
+    let mut a_chars = a.chars().peekable();
+    let mut b_chars = b.chars().peekable();
+
+    while let (Some(&ca), Some(&cb)) = (a_chars.peek(), b_chars.peek()) {
+        if ca.is_ascii_digit() && cb.is_ascii_digit() {
+            let mut na: u64 = 0;
+            let mut num_digits_a = 0;
+            while let Some(&c) = a_chars.peek() {
+                if let Some(d) = c.to_digit(10) {
+                    na = na.saturating_mul(10).saturating_add(d as u64);
+                    num_digits_a += 1;
+                    a_chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            let mut nb: u64 = 0;
+            let mut num_digits_b = 0;
+            while let Some(&c) = b_chars.peek() {
+                if let Some(d) = c.to_digit(10) {
+                    nb = nb.saturating_mul(10).saturating_add(d as u64);
+                    num_digits_b += 1;
+                    b_chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            if na != nb {
+                return na.cmp(&nb);
+            }
+            if num_digits_a != num_digits_b {
+                return num_digits_a.cmp(&num_digits_b);
+            }
+        } else {
+            let lower_a = ca.to_lowercase().collect::<Vec<_>>();
+            let lower_b = cb.to_lowercase().collect::<Vec<_>>();
+            if lower_a != lower_b {
+                return lower_a.cmp(&lower_b);
+            }
+            a_chars.next();
+            b_chars.next();
+        }
+    }
+
+    match (a_chars.peek(), b_chars.peek()) {
+        (None, None) => a.cmp(b),
+        (None, Some(_)) => Ordering::Less,
+        (Some(_), None) => Ordering::Greater,
+        (Some(_), Some(_)) => unreachable!(),
+    }
 }
 
 #[cfg(test)]
@@ -283,5 +419,30 @@ mod tests {
         let entries = fs_list_dir(dir.path(), false, "name", "asc").expect("fs_list_dir");
         let entry = entries.into_iter().find(|e| e.name == "a.txt").expect("a.txt present");
         assert_eq!(entry.ext, "txt");
+    }
+
+    #[test]
+    fn natural_sort_orders_numbers_numerically() {
+        assert_eq!(compare_natural("file2.txt", "file10.txt"), Ordering::Less);
+        assert_eq!(compare_natural("file10.txt", "file2.txt"), Ordering::Greater);
+        assert_eq!(compare_natural("file1.txt", "file2.txt"), Ordering::Less);
+        assert_eq!(compare_natural("file1.txt", "file1.txt"), Ordering::Equal);
+    }
+
+    #[test]
+    fn dirs_first_groups_directories_ahead_of_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::create_dir(dir.path().join("z_dir")).expect("create dir");
+        write_file(dir.path(), "a_file.txt", b"1");
+
+        // With dirs_first = true
+        let entries = fs_list_dir_with_options(dir.path(), false, "name", "asc", true, true).expect("fs_list");
+        let names: Vec<_> = entries.iter().map(|e| e.name.clone()).collect();
+        assert_eq!(names, vec!["z_dir", "a_file.txt"]);
+
+        // With dirs_first = false
+        let entries = fs_list_dir_with_options(dir.path(), false, "name", "asc", false, true).expect("fs_list");
+        let names: Vec<_> = entries.iter().map(|e| e.name.clone()).collect();
+        assert_eq!(names, vec!["a_file.txt", "z_dir"]);
     }
 }

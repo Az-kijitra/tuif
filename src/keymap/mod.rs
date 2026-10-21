@@ -142,7 +142,25 @@ impl ActionId {
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|a| a.as_str() == name)
+        let normalized = name.trim().to_ascii_lowercase().replace('-', "_");
+        if let Some(a) = Self::ALL.iter().copied().find(|a| a.as_str() == normalized) {
+            return Some(a);
+        }
+        match normalized.as_str() {
+            "quit" => Some(ActionId::Exit),
+            "quit_and_cd" | "quit_cd" | "exit_cd" => Some(ActionId::ExitAndCd),
+            "up" => Some(ActionId::MoveUp),
+            "down" => Some(ActionId::MoveDown),
+            "left" => Some(ActionId::MoveLeft),
+            "right" => Some(ActionId::MoveRight),
+            "top" => Some(ActionId::MoveTop),
+            "bottom" => Some(ActionId::MoveBottom),
+            "find" => Some(ActionId::Search),
+            "jump" => Some(ActionId::HistoryJumpList),
+            "zip" => Some(ActionId::ZipCreate),
+            "unzip" => Some(ActionId::ZipExtract),
+            _ => None,
+        }
     }
 
     pub fn default_binding_spec(self) -> &'static str {
@@ -207,22 +225,45 @@ impl KeyChord {
         if trimmed.is_empty() {
             return Err("empty key spec".to_string());
         }
-        let parts: Vec<&str> = trimmed.split('+').collect();
+
+        let mut remaining = trimmed;
         let mut ctrl = false;
         let mut alt = false;
         let mut shift = false;
 
-        for &mod_part in &parts[..parts.len() - 1] {
-            match mod_part.trim().to_ascii_lowercase().as_str() {
-                "ctrl" | "control" => ctrl = true,
-                "alt" => alt = true,
-                "shift" => shift = true,
-                other => return Err(format!("unknown modifier: {other}")),
+        loop {
+            let lower = remaining.to_ascii_lowercase();
+            if lower.starts_with("ctrl+") || lower.starts_with("ctrl-") {
+                ctrl = true;
+                remaining = remaining[5..].trim_start();
+            } else if lower.starts_with("control+") || lower.starts_with("control-") {
+                ctrl = true;
+                remaining = remaining[8..].trim_start();
+            } else if lower.starts_with("alt+") || lower.starts_with("alt-") {
+                alt = true;
+                remaining = remaining[4..].trim_start();
+            } else if lower.starts_with("shift+") || lower.starts_with("shift-") {
+                shift = true;
+                remaining = remaining[6..].trim_start();
+            } else if (lower.starts_with("c+") || lower.starts_with("c-")) && remaining.len() > 2 {
+                ctrl = true;
+                remaining = remaining[2..].trim_start();
+            } else if (lower.starts_with("a+") || lower.starts_with("a-")) && remaining.len() > 2 {
+                alt = true;
+                remaining = remaining[2..].trim_start();
+            } else if (lower.starts_with("s+") || lower.starts_with("s-")) && remaining.len() > 2 {
+                shift = true;
+                remaining = remaining[2..].trim_start();
+            } else {
+                break;
             }
         }
 
-        let raw_key = parts.last().copied().unwrap_or("").trim();
-        let key = normalize_key_name(raw_key)?;
+        if remaining.is_empty() {
+            return Err("missing key name after modifier".to_string());
+        }
+
+        let key = normalize_key_name(remaining)?;
         Ok(Self { ctrl, alt, shift, key })
     }
 
@@ -315,8 +356,12 @@ impl KeyChord {
 }
 
 fn normalize_key_name(raw: &str) -> Result<String, String> {
-    if raw.len() == 1 {
-        let ch = raw.chars().next().unwrap();
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("empty key name".to_string());
+    }
+    if trimmed.len() == 1 {
+        let ch = trimmed.chars().next().unwrap();
         if ch.is_ascii_alphanumeric() {
             return Ok(ch.to_ascii_uppercase().to_string());
         }
@@ -325,29 +370,31 @@ fn normalize_key_name(raw: &str) -> Result<String, String> {
             '.' => return Ok("Dot".to_string()),
             '-' => return Ok("Minus".to_string()),
             ';' => return Ok("Semicolon".to_string()),
+            ',' => return Ok("Comma".to_string()),
+            '+' => return Ok("Plus".to_string()),
             _ => {}
         }
     }
-    match raw.to_ascii_lowercase().as_str() {
+    match trimmed.to_ascii_lowercase().as_str() {
         "arrowup" | "up" => Ok("ArrowUp".to_string()),
         "arrowdown" | "down" => Ok("ArrowDown".to_string()),
         "arrowleft" | "left" => Ok("ArrowLeft".to_string()),
         "arrowright" | "right" => Ok("ArrowRight".to_string()),
-        "enter" => Ok("Enter".to_string()),
+        "enter" | "return" | "ret" => Ok("Enter".to_string()),
         "escape" | "esc" => Ok("Escape".to_string()),
         "delete" | "del" => Ok("Delete".to_string()),
-        "backspace" => Ok("Backspace".to_string()),
+        "backspace" | "bs" => Ok("Backspace".to_string()),
         "tab" => Ok("Tab".to_string()),
-        "space" => Ok("Space".to_string()),
+        "space" | "spc" => Ok("Space".to_string()),
         "home" => Ok("Home".to_string()),
         "end" => Ok("End".to_string()),
-        "pageup" => Ok("PageUp".to_string()),
-        "pagedown" => Ok("PageDown".to_string()),
+        "pageup" | "pgup" => Ok("PageUp".to_string()),
+        "pagedown" | "pgdn" => Ok("PageDown".to_string()),
         "comma" => Ok("Comma".to_string()),
         "plus" => Ok("Plus".to_string()),
         "dot" | "period" => Ok("Dot".to_string()),
-        "minus" => Ok("Minus".to_string()),
-        "semicolon" => Ok("Semicolon".to_string()),
+        "minus" | "hyphen" => Ok("Minus".to_string()),
+        "semicolon" | "semi" => Ok("Semicolon".to_string()),
         "f1" => Ok("F1".to_string()),
         "f2" => Ok("F2".to_string()),
         "f3" => Ok("F3".to_string()),
@@ -518,5 +565,36 @@ mod tests {
             km.resolve(&KeyChord::parse_single("Shift+Delete").unwrap()),
             Some(ActionId::DeletePermanent)
         );
+    }
+
+    #[test]
+    fn parses_key_chord_variations_and_hyphens() {
+        let c1 = KeyChord::parse_single("ctrl+p").unwrap();
+        let c2 = KeyChord::parse_single("Ctrl-P").unwrap();
+        let c3 = KeyChord::parse_single("c-p").unwrap();
+        let c4 = KeyChord::parse_single("Control+P").unwrap();
+
+        assert_eq!(c1, c2);
+        assert_eq!(c2, c3);
+        assert_eq!(c3, c4);
+        assert!(c1.ctrl);
+        assert_eq!(c1.key, "P");
+
+        // Key is minus
+        let minus_chord = KeyChord::parse_single("Ctrl+-").unwrap();
+        assert!(minus_chord.ctrl);
+        assert_eq!(minus_chord.key, "Minus");
+
+        let minus_hyphen = KeyChord::parse_single("ctrl--").unwrap();
+        assert_eq!(minus_chord, minus_hyphen);
+    }
+
+    #[test]
+    fn action_id_aliases_and_case_insensitivity() {
+        assert_eq!(ActionId::from_name("open_default"), Some(ActionId::OpenDefault));
+        assert_eq!(ActionId::from_name("open-default"), Some(ActionId::OpenDefault));
+        assert_eq!(ActionId::from_name("OPEN_DEFAULT"), Some(ActionId::OpenDefault));
+        assert_eq!(ActionId::from_name("quit"), Some(ActionId::Exit));
+        assert_eq!(ActionId::from_name("exit-and-cd"), Some(ActionId::ExitAndCd));
     }
 }

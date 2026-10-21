@@ -18,6 +18,11 @@ use crate::remote::profile::ConnectionProfile;
 pub fn draw(frame: &mut Frame, app: &AppState) {
     let area = frame.area();
 
+    // Fill background if theme defines a background color
+    if app.theme.bg != Color::Reset {
+        frame.render_widget(Block::default().style(Style::default().bg(app.theme.bg)), area);
+    }
+
     // If fullscreen Viewer overlay is active, render it across the entire screen
     if matches!(app.overlay, OverlayMode::Viewer { .. }) {
         draw_viewer(frame, area, app);
@@ -44,7 +49,7 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
     match &app.overlay {
         OverlayMode::None | OverlayMode::Viewer { .. } => {}
         OverlayMode::Input { title, buffer, .. } => {
-            draw_input_modal(frame, area, title, buffer);
+            draw_input_modal(frame, area, title, buffer, &app.theme);
         }
         OverlayMode::PasswordPrompt {
             title,
@@ -52,7 +57,7 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
             save_password,
             ..
         } => {
-            draw_password_prompt_modal(frame, area, title, buffer, *save_password);
+            draw_password_prompt_modal(frame, area, title, buffer, *save_password, &app.theme);
         }
         OverlayMode::HostKeyConfirm {
             endpoint,
@@ -69,7 +74,7 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
             cursor,
             password_buffer,
         } => {
-            draw_connection_edit_modal(frame, area, *is_new, profile, *cursor, password_buffer);
+            draw_connection_edit_modal(frame, area, *is_new, profile, *cursor, password_buffer, &app.theme);
         }
         OverlayMode::SortMenu { cursor } => {
             let items = vec![
@@ -82,7 +87,7 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
                 "Modified (Asc)".to_string(),
                 "Modified (Desc)".to_string(),
             ];
-            draw_popup_list(frame, area, "Sort (j/k:Move Enter:Apply Esc:Close)", &items, *cursor);
+            draw_popup_list(frame, area, "Sort (j/k:Move Enter:Apply Esc:Close)", &items, *cursor, &app.theme);
         }
         OverlayMode::ListPopup {
             title,
@@ -95,7 +100,7 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
             } else {
                 items.clone()
             };
-            draw_popup_list(frame, area, title, &display_items, *cursor);
+            draw_popup_list(frame, area, title, &display_items, *cursor, &app.theme);
         }
         OverlayMode::ActionMenu { cursor } => {
             let mut items = vec![
@@ -115,7 +120,7 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
                 let tag = if ext.is_gui { "[GUI]" } else { "[CUI]" };
                 items.push(format!("{tag} {} ({})", ext.name, ext.key_label));
             }
-            draw_popup_list(frame, area, "Action Menu (j/k/Enter/Esc)", &items, *cursor);
+            draw_popup_list(frame, area, "Action Menu (j/k/Enter/Esc)", &items, *cursor, &app.theme);
         }
         OverlayMode::MenuBar { cat_idx, item_idx } => {
             draw_menubar_dropdown(frame, area, app, *cat_idx, *item_idx);
@@ -145,44 +150,60 @@ fn draw_menu_bar(frame: &mut Frame, area: Rect, app: &AppState) {
     let mut spans = Vec::new();
     for (i, label) in labels.iter().enumerate() {
         let style = if active_cat == Some(i) {
-            Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(app.theme.menu_bar_active_fg)
+                .bg(app.theme.menu_bar_active_bg)
+                .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::White).bg(Color::DarkGray)
+            Style::default()
+                .fg(app.theme.status_bar_fg)
+                .bg(app.theme.status_bar_bg)
         };
         spans.push(Span::styled(*label, style));
-        spans.push(Span::styled(" ", Style::default().bg(Color::DarkGray)));
+        spans.push(Span::styled(" ", Style::default().bg(app.theme.status_bar_bg)));
     }
     spans.push(Span::styled(
         "  tuif",
-        Style::default().fg(Color::Gray).bg(Color::DarkGray),
+        Style::default()
+            .fg(app.theme.border_inactive)
+            .bg(app.theme.status_bar_bg),
     ));
-    let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
+    let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(app.theme.status_bar_bg));
     frame.render_widget(bar, area);
 }
 
 fn draw_path_and_search_bar(frame: &mut Frame, area: Rect, app: &AppState) {
     let mut lines = vec![Line::from(vec![
-        Span::styled(" Path: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::raw(app.active_display_path()),
+        Span::styled(
+            " Path: ",
+            Style::default()
+                .fg(app.theme.tree_current)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(app.active_display_path(), Style::default().fg(app.theme.file)),
     ])];
     if !app.search_query.is_empty() {
         let mode_tag = if app.search_regex { "[Regex]" } else { "[Substr]" };
         lines.push(Line::from(vec![
             Span::styled(
                 format!(" Search {mode_tag}: "),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(app.theme.selected)
+                    .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(app.search_query.clone()),
+            Span::styled(app.search_query.clone(), Style::default().fg(app.theme.file)),
         ]));
     }
-    frame.render_widget(Paragraph::new(lines), area);
+    let p = Paragraph::new(lines).style(Style::default().bg(app.theme.bg));
+    frame.render_widget(p, area);
 }
 
 fn draw_main_body(frame: &mut Frame, area: Rect, app: &AppState) {
     if app.ui_state.ui_show_tree {
+        let tw = app.layout.tree_width_percent.clamp(10, 50);
         let h_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(24), Constraint::Percentage(76)])
+            .constraints([Constraint::Percentage(tw), Constraint::Percentage(100 - tw)])
             .split(area);
         draw_tree_pane(frame, h_chunks[0], app);
         draw_file_list_pane(frame, h_chunks[1], app);
@@ -194,13 +215,18 @@ fn draw_main_body(frame: &mut Frame, area: Rect, app: &AppState) {
 fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
     let focused = app.focus_pane == FocusPane::Tree;
     let border_style = if focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(app.theme.border)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(app.theme.border_inactive)
     };
     let inner_height = area.height.saturating_sub(2) as usize;
     let page_size = inner_height.max(1);
-    let start_offset = (app.tree_cursor / page_size) * page_size;
+    let offset = app.general.scroll_offset.min(page_size / 2);
+    let start_offset = if app.tree_cursor < page_size {
+        0
+    } else {
+        (app.tree_cursor + offset + 1).saturating_sub(page_size)
+    };
     let current_dir_key = normalize_tree_key(&app.current_dir);
 
     let items: Vec<ListItem> = app
@@ -219,13 +245,18 @@ fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
             let caret = if node.expanded { "▾ " } else { "▸ " };
             let text = format!("{indent}{caret}{}", node.name);
             let style = if i == app.tree_cursor && focused {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
-            } else if is_current_dir {
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
-            } else if i == app.tree_cursor {
-                Style::default().fg(Color::Yellow)
-            } else {
                 Style::default()
+                    .fg(app.theme.cursor_fg)
+                    .bg(app.theme.cursor_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_current_dir {
+                Style::default()
+                    .fg(app.theme.tree_current)
+                    .add_modifier(Modifier::BOLD)
+            } else if i == app.tree_cursor {
+                Style::default().fg(app.theme.tree_cursor)
+            } else {
+                Style::default().fg(app.theme.file)
             };
             ListItem::new(text).style(style)
         })
@@ -235,6 +266,7 @@ fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
         Block::default()
             .borders(Borders::ALL)
             .border_style(border_style)
+            .style(Style::default().bg(app.theme.bg))
             .title(" Drives / Tree (Tab | l:Expand h:Collapse Enter:Open) "),
     );
     frame.render_widget(list, area);
@@ -243,14 +275,14 @@ fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
 fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
     let focused = app.focus_pane == FocusPane::FileList;
     let border_style = if focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(app.theme.border)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(app.theme.border_inactive)
     };
 
     let rows_per_col = area.height.saturating_sub(2).max(1) as usize;
     let inner_width = area.width.saturating_sub(2) as usize;
-    let mut min_col_width: usize = 24;
+    let mut min_col_width: usize = app.layout.min_col_width.clamp(10, 80);
     if app.ui_state.ui_show_size {
         min_col_width += 10;
     }
@@ -271,6 +303,7 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(border_style)
+        .style(Style::default().bg(app.theme.bg))
         .title(format!(
             " {left_arrow}Files ({} items) [sort: {} {}]{right_arrow} ",
             app.visible_indices.len(),
@@ -280,7 +313,7 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
 
     if app.visible_indices.is_empty() {
         let empty = Paragraph::new("  No items")
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(app.theme.border_inactive).bg(app.theme.bg))
             .block(block);
         frame.render_widget(empty, area);
         return;
@@ -338,7 +371,7 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
             } else {
                 format_size(entry.size)
             };
-            let time_col = entry.modified.clone();
+            let time_col = format_timestamp(&entry.modified, &app.layout.time_format);
 
             let mut cells = vec![name_col];
             if app.ui_state.ui_show_size {
@@ -348,14 +381,28 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
                 cells.push(time_col);
             }
 
+            let is_exe = entry.name.ends_with(".exe")
+                || entry.name.ends_with(".bat")
+                || entry.name.ends_with(".cmd")
+                || entry.name.ends_with(".ps1");
+
             let style = if is_focused && focused {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
-            } else if is_selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-            } else if entry.entry_type == EntryType::Dir {
-                Style::default().fg(Color::LightBlue).add_modifier(Modifier::BOLD)
-            } else {
                 Style::default()
+                    .fg(app.theme.cursor_fg)
+                    .bg(app.theme.cursor_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_selected {
+                Style::default()
+                    .fg(app.theme.selected)
+                    .add_modifier(Modifier::BOLD)
+            } else if entry.entry_type == EntryType::Dir {
+                Style::default()
+                    .fg(app.theme.folder)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_exe {
+                Style::default().fg(app.theme.executable)
+            } else {
+                Style::default().fg(app.theme.file)
             };
 
             rows.push(Row::new(cells).style(style));
@@ -369,16 +416,16 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
             widths.push(Constraint::Length(20));
         }
 
-        let table = Table::new(rows, widths);
+        let table = Table::new(rows, widths).style(Style::default().bg(app.theme.bg));
         frame.render_widget(table, table_rect);
 
         if has_right_neighbor && col_rect.width > 2 {
             let sep_x = col_rect.x + col_rect.width - 1;
             let sep_lines: Vec<Line> = (0..col_rect.height)
-                .map(|_| Line::from(Span::styled("│", Style::default().fg(Color::DarkGray))))
+                .map(|_| Line::from(Span::styled("│", Style::default().fg(app.theme.border_inactive).bg(app.theme.bg))))
                 .collect();
             frame.render_widget(
-                Paragraph::new(sep_lines),
+                Paragraph::new(sep_lines).style(Style::default().bg(app.theme.bg)),
                 Rect {
                     x: sep_x,
                     y: col_rect.y,
@@ -413,7 +460,11 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, app: &AppState) {
         clip_info,
         app.status_message
     );
-    let bar = Paragraph::new(text).style(Style::default().fg(Color::White).bg(Color::DarkGray));
+    let bar = Paragraph::new(text).style(
+        Style::default()
+            .fg(app.theme.status_bar_fg)
+            .bg(app.theme.status_bar_bg),
+    );
     frame.render_widget(bar, area);
 }
 
@@ -473,13 +524,14 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
     };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(app.theme.border))
+        .style(Style::default().bg(app.theme.bg))
         .title(format!(
             " Viewer{mode_tag}: {title} (Line {}/{}) ",
             scroll_y + 1,
             lines.len().max(1)
         ));
-    frame.render_widget(Paragraph::new(visible_lines).block(block), chunks[0]);
+    frame.render_widget(Paragraph::new(visible_lines).style(Style::default().bg(app.theme.bg)).block(block), chunks[0]);
 
     let footer_text = if is_markdown {
         " j/k/Up/Down:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  p/Tab:Preview/Raw  q/Esc:Close"
@@ -487,18 +539,26 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
         " j/k/Up/Down:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  q/Esc:Close"
     };
     let footer = Paragraph::new(footer_text)
-        .style(Style::default().fg(Color::Black).bg(Color::Cyan));
+        .style(Style::default().fg(app.theme.cursor_fg).bg(app.theme.cursor_bg));
     frame.render_widget(footer, chunks[1]);
 }
 
-fn draw_input_modal(frame: &mut Frame, area: Rect, title: &str, buffer: &str) {
+fn draw_input_modal(frame: &mut Frame, area: Rect, title: &str, buffer: &str, theme: &crate::theme::Theme) {
     let popup = centered_rect(70, 5, area);
     frame.render_widget(Clear, popup);
+    let popup_bg = if theme.bg != Color::Reset {
+        theme.bg
+    } else {
+        Color::Black
+    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
+        .border_style(Style::default().fg(theme.border))
+        .style(Style::default().bg(popup_bg))
         .title(format!(" {title} "));
-    let content = Paragraph::new(format!("{buffer}█")).block(block);
+    let content = Paragraph::new(format!("{buffer}█"))
+        .style(Style::default().fg(theme.file).bg(popup_bg))
+        .block(block);
     frame.render_widget(content, popup);
 }
 
@@ -521,7 +581,12 @@ pub fn menubar_dropdown_rect(area: Rect, cat_idx: usize, item_count: usize) -> R
     }
 }
 
-pub fn main_panes_geometry(area: Rect, has_search: bool, show_tree: bool) -> (Rect, Option<Rect>, Rect) {
+pub fn main_panes_geometry(
+    area: Rect,
+    has_search: bool,
+    show_tree: bool,
+    tree_width_percent: u16,
+) -> (Rect, Option<Rect>, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -534,9 +599,10 @@ pub fn main_panes_geometry(area: Rect, has_search: bool, show_tree: bool) -> (Re
     let path_bar_rect = chunks[1];
     let main_rect = chunks[2];
     if show_tree {
+        let tw = tree_width_percent.clamp(10, 50);
         let h_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(24), Constraint::Percentage(76)])
+            .constraints([Constraint::Percentage(tw), Constraint::Percentage(100 - tw)])
             .split(main_rect);
         (path_bar_rect, Some(h_chunks[0]), h_chunks[1])
     } else {
@@ -550,9 +616,10 @@ pub fn hit_test_file_list(
     focused_vis_idx: usize,
     show_size: bool,
     show_time: bool,
-    mouse_x: u16,
-    mouse_y: u16,
+    base_min_col_width: usize,
+    mouse: (u16, u16),
 ) -> Option<usize> {
+    let (mouse_x, mouse_y) = mouse;
     if visible_len == 0 || file_list_rect.width <= 2 || file_list_rect.height <= 2 {
         return None;
     }
@@ -572,7 +639,7 @@ pub fn hit_test_file_list(
 
     let rows_per_col = file_list_rect.height.saturating_sub(2).max(1) as usize;
     let inner_width = file_list_rect.width.saturating_sub(2) as usize;
-    let mut min_col_width: usize = 24;
+    let mut min_col_width: usize = base_min_col_width.clamp(10, 80);
     if show_size {
         min_col_width += 10;
     }
@@ -608,9 +675,51 @@ pub fn hit_test_file_list(
     }
 }
 
-fn draw_popup_list(frame: &mut Frame, area: Rect, title: &str, items: &[String], cursor: usize) {
+/// Formats a 20-digit Unix timestamp string into the user's configured format string (e.g. "%Y/%m/%d %H:%M").
+pub fn format_timestamp(raw: &str, format_str: &str) -> String {
+    let Ok(secs) = raw.trim().parse::<i64>() else {
+        return raw.to_string();
+    };
+    if secs <= 0 {
+        return String::new();
+    }
+    let Ok(dt) = time::OffsetDateTime::from_unix_timestamp(secs) else {
+        return raw.to_string();
+    };
+
+    let year = dt.year();
+    let month = dt.month() as u8;
+    let day = dt.day();
+    let hour = dt.hour();
+    let minute = dt.minute();
+    let second = dt.second();
+
+    let mut result = format_str.to_string();
+    result = result.replace("%Y", &format!("{year:04}"));
+    result = result.replace("%m", &format!("{month:02}"));
+    result = result.replace("%d", &format!("{day:02}"));
+    result = result.replace("%H", &format!("{hour:02}"));
+    result = result.replace("%M", &format!("{minute:02}"));
+    result = result.replace("%S", &format!("{second:02}"));
+    result
+}
+
+fn draw_popup_list(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    items: &[String],
+    cursor: usize,
+    theme: &crate::theme::Theme,
+) {
     let (popup, start_offset, page_size) = popup_list_geometry(area, items.len(), cursor);
     frame.render_widget(Clear, popup);
+
+    let popup_bg = if theme.bg != Color::Reset {
+        theme.bg
+    } else {
+        Color::Black
+    };
 
     let list_items: Vec<ListItem> = items
         .iter()
@@ -619,9 +728,12 @@ fn draw_popup_list(frame: &mut Frame, area: Rect, title: &str, items: &[String],
         .take(page_size)
         .map(|(i, item)| {
             let style = if i == cursor {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
-            } else {
                 Style::default()
+                    .fg(theme.cursor_fg)
+                    .bg(theme.cursor_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.file).bg(popup_bg)
             };
             ListItem::new(format!("  {item}")).style(style)
         })
@@ -630,7 +742,8 @@ fn draw_popup_list(frame: &mut Frame, area: Rect, title: &str, items: &[String],
     let list = List::new(list_items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(theme.border))
+            .style(Style::default().bg(popup_bg))
             .title(format!(" {title} ")),
     );
     frame.render_widget(list, popup);
@@ -693,14 +806,23 @@ fn draw_menubar_dropdown(
     let rect = menubar_dropdown_rect(area, cat_idx, items.len());
     frame.render_widget(Clear, rect);
 
+    let popup_bg = if app.theme.bg != Color::Reset {
+        app.theme.bg
+    } else {
+        Color::Black
+    };
+
     let list_items: Vec<ListItem> = items
         .iter()
         .enumerate()
         .map(|(i, s)| {
             let style = if i == item_idx {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
-            } else {
                 Style::default()
+                    .fg(app.theme.menu_bar_active_fg)
+                    .bg(app.theme.menu_bar_active_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.theme.file).bg(popup_bg)
             };
             ListItem::new(format!(" {s}")).style(style)
         })
@@ -708,7 +830,8 @@ fn draw_menubar_dropdown(
     let list = List::new(list_items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
+            .border_style(Style::default().fg(app.theme.border))
+            .style(Style::default().bg(popup_bg)),
     );
     frame.render_widget(list, rect);
 }
@@ -764,6 +887,7 @@ fn draw_password_prompt_modal(
     title: &str,
     buffer: &str,
     save_password: bool,
+    theme: &crate::theme::Theme,
 ) {
     let width = 60.min(area.width.saturating_sub(4)).max(30);
     let height = 6;
@@ -779,25 +903,32 @@ fn draw_password_prompt_modal(
         "[ ] Save password in Windows Credential Manager"
     };
 
+    let popup_bg = if theme.bg != Color::Reset {
+        theme.bg
+    } else {
+        Color::Black
+    };
+
     let lines = vec![
         Line::from(vec![
-            Span::styled(" Password: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw(masked),
-            Span::styled("█", Style::default().fg(Color::Cyan)),
+            Span::styled(" Password: ", Style::default().fg(theme.selected).add_modifier(Modifier::BOLD)),
+            Span::styled(masked, Style::default().fg(theme.file)),
+            Span::styled("█", Style::default().fg(theme.tree_cursor)),
         ]),
         Line::from(vec![
-            Span::styled(format!(" {save_tag} (Tab to toggle)"), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!(" {save_tag} (Tab to toggle)"), Style::default().fg(theme.border_inactive)),
         ]),
         Line::from(vec![
-            Span::styled(" [Enter] Connect  [Esc] Cancel", Style::default().fg(Color::Gray)),
+            Span::styled(" [Enter] Connect  [Esc] Cancel", Style::default().fg(theme.border_inactive)),
         ]),
     ];
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(theme.border))
+        .style(Style::default().bg(popup_bg))
         .title(format!(" {title} "));
-    frame.render_widget(Paragraph::new(lines).block(block), popup);
+    frame.render_widget(Paragraph::new(lines).style(Style::default().bg(popup_bg)).block(block), popup);
 }
 
 fn draw_host_key_confirm_modal(
@@ -846,9 +977,15 @@ fn draw_connection_manager_modal(
     let page_size = inner_h.max(1);
     let start_offset = (cursor / page_size) * page_size;
 
+    let popup_bg = if app.theme.bg != Color::Reset {
+        app.theme.bg
+    } else {
+        Color::Black
+    };
+
     let items: Vec<ListItem> = if app.remote_profiles.is_empty() {
         vec![ListItem::new("  (No profiles configured. Press 'a' to add new profile)")
-            .style(Style::default().fg(Color::DarkGray))]
+            .style(Style::default().fg(app.theme.border_inactive).bg(popup_bg))]
     } else {
         app.remote_profiles
             .iter()
@@ -858,9 +995,12 @@ fn draw_connection_manager_modal(
             .map(|(i, p)| {
                 let sel = i == cursor;
                 let style = if sel {
-                    Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
-                } else {
                     Style::default()
+                        .fg(app.theme.cursor_fg)
+                        .bg(app.theme.cursor_bg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(app.theme.file).bg(popup_bg)
                 };
                 let label = format!("  {}  ({}:{})", p.display_label(), p.host, p.port);
                 ListItem::new(label).style(style)
@@ -876,7 +1016,8 @@ fn draw_connection_manager_modal(
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(app.theme.border))
+            .style(Style::default().bg(popup_bg))
             .title(" SFTP Connection Profiles "),
     );
     frame.render_widget(list, chunks[0]);
@@ -884,13 +1025,17 @@ fn draw_connection_manager_modal(
     let help = Paragraph::new(Line::from(vec![
         Span::styled(
             " [Enter] Connect  [a] Add  [e] Edit  [d] Delete  [Esc] Close ",
-            Style::default().fg(Color::Black).bg(Color::DarkGray),
+            Style::default()
+                .fg(app.theme.status_bar_fg)
+                .bg(app.theme.status_bar_bg),
         ),
     ]))
+    .style(Style::default().bg(popup_bg))
     .block(
         Block::default()
             .borders(Borders::BOTTOM | Borders::LEFT | Borders::RIGHT)
-            .border_style(Style::default().fg(Color::Cyan)),
+            .border_style(Style::default().fg(app.theme.border))
+            .style(Style::default().bg(popup_bg)),
     );
     frame.render_widget(help, chunks[1]);
 }
@@ -902,6 +1047,7 @@ fn draw_connection_edit_modal(
     profile: &ConnectionProfile,
     cursor: usize,
     password_buffer: &str,
+    theme: &crate::theme::Theme,
 ) {
     let width = 64.min(area.width.saturating_sub(4)).max(40);
     let height = 12;
@@ -934,14 +1080,14 @@ fn draw_connection_edit_modal(
         .map(|(i, (label, val))| {
             let is_cur = i == cursor;
             let label_style = if is_cur {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default().fg(theme.selected).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme.border_inactive)
             };
             let val_style = if is_cur {
-                Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default().fg(theme.cursor_fg).bg(theme.selected).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(theme.file)
             };
             Line::from(vec![
                 Span::styled(format!("  {:14}: ", label), label_style),
@@ -955,12 +1101,18 @@ fn draw_connection_edit_modal(
     } else {
         " Edit SFTP Profile "
     };
+    let popup_bg = if theme.bg != Color::Reset {
+        theme.bg
+    } else {
+        Color::Black
+    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(theme.border))
+        .style(Style::default().bg(popup_bg))
         .title(format!("{title}(Tab/Down:Next, Enter:Save, Esc:Cancel) "));
 
-    frame.render_widget(Paragraph::new(lines).block(block), popup);
+    frame.render_widget(Paragraph::new(lines).style(Style::default().bg(popup_bg)).block(block), popup);
 }
 
 fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferProgressState) {

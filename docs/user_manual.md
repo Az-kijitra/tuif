@@ -8,6 +8,7 @@
 
 1. [前提・連携ソフトウェアのインストール方法](#1-前提連携ソフトウェアのインストール方法)
 2. [設定フォルダーと構成ファイル](#2-設定フォルダーと構成ファイル)
+   - [2.1 %APPDATA% の確認・アクセス方法](#21-appdata-の確認アクセス方法)
 3. [画面構成と基本操作](#3-画面構成と基本操作)
    - [3.1 既定のキー割り当て (Vim-like)](#31-既定のキー割り当て-vim-like)
    - [3.2 マウス操作 (Windows エクスプローラー互換)](#32-マウス操作-windows-エクスプローラー互換)
@@ -26,6 +27,10 @@
    - [7.5 ファイル転送の進捗表示と中断 (プログレスバー & キャンセル)](#75-ファイル転送の進捗表示と中断-プログレスバー--キャンセル)
    - [7.6 同名ファイルの衝突確認ダイアログ (衝突解決)](#76-同名ファイルの衝突確認ダイアログ-衝突解決)
 8. [トラブルシューティング / FAQ](#8-トラブルシューティング--faq)
+9. [テーマ・配色のカスタマイズ (`config.toml`)](#9-テーマ配色のカスタマイズ-configtoml)
+10. [動作オプション・レイアウト設定 (`config.toml`)](#10-動作オプションレイアウト設定-configtoml)
+11. [キーマップのカスタマイズ (`[keymap]`)](#11-キーマップのカスタマイズ-keymap)
+12. [設定ファイル (`config.toml`) の完全サンプル](#12-設定ファイル-configtoml-の完全サンプル)
 
 ---
 
@@ -52,17 +57,42 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 
 ## 2. 設定フォルダーと構成ファイル
 
-設定ファイルは `%APPDATA%\cuifiler`（通常は `C:\Users\<ユーザー名>\AppData\Roaming\cuifiler`）に保存されます。
+設定ファイルは `%APPDATA%\tuif`（通常は `C:\Users\<ユーザー名>\AppData\Roaming\tuif`）に保存されます。
 
 | ファイル | 内容 |
 |---|---|
-| `config.toml` | キー割り当て (`[input_keymap_custom]`)、テーマ (`ui_theme`)、外部アプリ定義 (`[[external_apps]]`) |
+| `config.toml` | キー割り当て (`[keymap]` / `[input_keymap_custom]`)、テーマ・配色 (`[theme]` / `[colors]`)、動作・レイアウト (`[general]` / `[layout]`)、外部アプリ定義 (`[[external_apps]]`) |
 | `navigation.toml` | 訪問履歴 (`history`) とジャンプリスト (`jump_list`) |
 | `ui-state.toml` | ツリー・隠しファイル・サイズ列・更新日時列の表示状態、ソート条件 |
 | `remote_profiles.toml` | SFTP 接続プロファイル一覧 (接続先ホスト、ポート、ユーザー名、初期ディレクトリ等) |
 | `known_hosts.toml` | SFTP 接続先の SSH ホスト鍵 (SHA256 フィンガープリント) キャッシュ |
 
 > **セキュリティについて**: SFTP のログインパスワードを保存する場合、平文の設定ファイルには一切書き込まれず、Windows OS 標準の **Windows 資格情報マネージャー** (`Windows Credential Manager`) 内に暗号化保管されます。
+
+### 2.1 %APPDATA% の確認・アクセス方法
+
+`%APPDATA%` は Windows における各ユーザーのアプリケーション設定保存先フォルダ（`AppData\Roaming`）を指す環境変数です。以下のいずれかの方法で簡単に確認および開くことができます。
+
+1. **PowerShell でパスを確認する**:
+   ```powershell
+   $env:APPDATA
+   # 出力例: C:\Users\ユーザー名\AppData\Roaming
+   ```
+2. **PowerShell から tuif 設定フォルダをエクスプローラーで直接開く**:
+   ```powershell
+   explorer "$env:APPDATA\tuif"
+   ```
+   ※ 初回起動前などでフォルダがまだ作成されていない場合は、以下のコマンドで作成して開くことができます。
+   ```powershell
+   New-Item -ItemType Directory -Path "$env:APPDATA\tuif" -Force; explorer "$env:APPDATA\tuif"
+   ```
+3. **「ファイル名を指定して実行」で開く**:
+   - キーボードの `Win + R` キーを押して実行ダイアログを開きます。
+   - 名前に `%APPDATA%\tuif`（または親フォルダを開く場合は `%APPDATA%`）と入力して `Enter` を押すと、直接エクスプローラーでフォルダが開きます。
+4. **コマンドプロンプト (cmd.exe) で確認する**:
+   ```cmd
+   echo %APPDATA%
+   ```
 
 ---
 
@@ -201,7 +231,7 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 
 ### 5.3 外部アプリのカスタマイズ (`config.toml`)
 
-`%APPDATA%\cuifiler\config.toml` に `[[external_apps]]` セクションを追加・編集することで、任意のツールを追加・変更できます。
+`%APPDATA%\tuif\config.toml` に `[[external_apps]]` セクションを追加・編集することで、任意のツールを追加・変更できます。
 
 ```toml
 # 例: GUI テキストエディタ (notepad++) を追加
@@ -321,7 +351,7 @@ tf C:\Users\username\Projects
 ### 7.2 ホスト鍵の確認 (TOFU: Trust on First Use)
 
 初めて接続するサーバーの場合、ホスト鍵の SHA256 フィンガープリント確認ダイアログが表示されます。
-`y` または `Enter` を押すと、`%APPDATA%\cuifiler\known_hosts.toml` に安全に登録され、次回以降の接続時に自動検証されます（未知の鍵変更時は警告ブロックされます）。
+`y` または `Enter` を押すと、`%APPDATA%\tuif\known_hosts.toml` に安全に登録され、次回以降の接続時に自動検証されます（未知の鍵変更時は警告ブロックされます）。
 
 ---
 
@@ -412,7 +442,239 @@ tf C:\Users\username\Projects
 - `Ctrl+S` で接続マネージャーを開き、対象プロファイルで `e` を押してパスワード欄を空にして保存するか、Windows のスタートメニューから「**資格情報マネージャー**」を開き、`Windows 資格情報` の一覧から `tuif-sftp:<プロファイルID>` を削除してください。
 
 ### Q. サーバーの再インストール等で `HOST KEY MISMATCH` 警告が出る
-- サーバーの鍵が更新された正当な理由がある場合は、`%APPDATA%\cuifiler\known_hosts.toml` をテキストエディタで開き、該当ホストのエントリを削除してから再接続してください（新しいホスト鍵の登録ダイアログが表示されます）。
+- サーバーの鍵が更新された正当な理由がある場合は、`%APPDATA%\tuif\known_hosts.toml` をテキストエディタで開き、該当ホストのエントリを削除してから再接続してください（新しいホスト鍵の登録ダイアログが表示されます）。
 
 ### Q. 日本語を含むファイル名が文字化けする
 - `tuif` は UTF-8 を標準として送受信を行います。Linux サーバー側のロケールが UTF-8（例: `ja_JP.UTF-8` や `C.UTF-8`）に設定されていることを推奨します。
+
+---
+
+## 9. テーマ・配色のカスタマイズ (`config.toml`)
+
+`%APPDATA%\tuif\config.toml` を作成・編集することで、画面全体のカラーテーマプリセットや個別UI要素の配色を自由にカスタマイズできます。
+
+### テーマプリセットの指定 (`[theme]`)
+
+`preset` に組み込みのテーマ名を指定します。
+
+```toml
+[theme]
+preset = "nord"
+```
+
+利用可能なプリセット:
+- `"default"`: 標準のシアン・イエローベース
+- `"nord"`: 落ち着いたブルー・アークティックトーン
+- `"monokai"`: ハイコントラストなプログラミング向けテーマ
+- `"catppuccin"`: パステルトーンのモダンテーマ (Mocha)
+- `"solarized-dark"`: 目に優しいダークテーマ
+- `"light"`: 明るい背景環境向けのライトテーマ
+
+### 個別カラーのオーバーライド (`[colors]`)
+
+プリセットをベースにしながら、特定要素の色のみを上書き変更できます。
+指定可能な値は、標準カラー名（`"black"`, `"red"`, `"green"`, `"yellow"`, `"blue"`, `"magenta"`, `"cyan"`, `"gray"`, `"dark_gray"`, `"light_red"`, `"light_green"`, `"light_yellow"`, `"light_blue"`, `"light_magenta"`, `"light_cyan"`, `"white"`）、256色インデックス番号（`"0"`〜`"255"`）、または `#RRGGBB` / `#RGB` のHEXコードです。
+
+```toml
+[theme]
+preset = "nord"
+
+[colors]
+bg = "#2E3440"                # 画面全体の背景色 ("none" または "reset" でターミナル背景透過)
+border = "#88C0D0"            # アクティブペイン枠・モーダル枠
+border_inactive = "#4C566A"   # 非アクティブペイン枠
+cursor_fg = "#2E3440"         # カーソル行文字色
+cursor_bg = "#88C0D0"         # カーソル行背景色
+folder = "#81A1C1"            # ディレクトリ表示色
+file = "#ECEFF4"              # 通常ファイル表示色
+executable = "#A3BE8C"        # 実行可能ファイル (.exe, .bat, .cmd, .ps1)
+selected = "#EBCB8B"          # 複数選択マーク・ハイライト色
+status_bar_fg = "#E5E9F0"     # ステータスバー文字色
+status_bar_bg = "#3B4252"     # ステータスバー背景色
+menu_bar_active_fg = "#2E3440"# メニューバーアクティブ項目文字色
+menu_bar_active_bg = "#88C0D0"# メニューバーアクティブ項目背景色
+tree_current = "#88C0D0"      # ツリーペインでのカレントフォルダ表示色
+tree_cursor = "#EBCB8B"       # ツリーペインのカーソル色
+```
+
+---
+
+## 10. 動作オプション・レイアウト設定 (`config.toml`)
+
+`config.toml` に `[general]` および `[layout]` セクションを追加することで、操作挙動や表示レイアウトを細かくカスタマイズできます。
+
+```toml
+# 基本動作・操作挙動
+[general]
+confirm_delete = true        # 削除・ごみ箱移動時に確認ダイアログを表示するか (default: true)
+delete_to_trash = true       # 削除時にごみ箱へ送るか (false の場合は直接完全削除) (default: true)
+dirs_first = false           # ソート時にフォルダを常にファイルより上に優先表示するか (default: false)
+natural_sort = true          # 自然順ソート (file1, file2, file10) を使用するか (default: true)
+scroll_offset = 2            # ツリーペイン等のスクロール余白行数 (default: 2)
+
+# 画面レイアウト・表示
+[layout]
+tree_width_percent = 24      # Drives / Tree ペインの横幅の割合 (10〜50, default: 24)
+min_col_width = 24           # マルチカラム一覧表示時の1列あたりの最小文字幅 (10〜80, default: 24)
+time_format = "%Y/%m/%d %H:%M" # 更新日時の表示フォーマット (default: "%Y/%m/%d %H:%M")
+```
+
+### 設定項目の詳細
+
+- **`confirm_delete`**:
+  `false` に設定すると、ファイルやフォルダを削除（`d` / `Delete`）する際に確認ダイアログを出さずに即座に実行します。
+- **`delete_to_trash`**:
+  `false` に設定すると、ごみ箱を経由せず直ちに完全削除します。
+- **`dirs_first`**:
+  `true` に設定すると、名前順やサイズ順、日付順ソート時にもディレクトリが常にファイルより上部にまとめて表示されます。
+- **`natural_sort`**:
+  `true` の場合、ファイル名に含まれる数字を数値として解釈し、`file2.txt` を `file10.txt` より前に並べます。
+- **`tree_width_percent`**:
+  ツリーペイン（Drives / Tree）の表示幅を全体の 10% 〜 50% の範囲で調整できます。
+- **`min_col_width`**:
+  ファイル一覧をマルチカラム表示する際、1カラムに確保する最小の幅文字数を設定します。幅を広げることで長いファイル名を省略せずに表示しやすくなります。
+- **`time_format`**:
+  日時の表示形式を自由に変更できます（例: `"%Y-%m-%d %H:%M"`, `"%m/%d %H:%M:%S"` など）。トークンとして `%Y`（西暦4桁）、`%m`（月2桁）、`%d`（日2桁）、`%H`（時2桁）、`%M`（分2桁）、`%S`（秒2桁）が利用できます。
+
+---
+
+## 11. キーマップのカスタマイズ (`[keymap]`)
+
+`config.toml` の `[keymap]` セクション（または従来の `[input_keymap_custom]`）を編集することで、各アクションを実行するキー割り当てを自由にカスタマイズできます。
+
+> **互換性**: 従来の `[input_keymap_custom]` セクションもそのまま有効です。両方が記述されている場合は `[keymap]` の設定が優先されます。
+
+### 設定例
+
+```toml
+[keymap]
+# 単一キーまたはカンマ区切りで複数のショートカットキーを割り当て可能
+open = "Enter"
+open_default = "o, Shift+Enter"
+go_parent = "Backspace, -"
+exit = "q"
+exit_and_cd = "Ctrl+q"
+fuzzy_find_file = "Ctrl+P, Ctrl+F"
+fuzzy_live_grep = "Ctrl+G, Shift+F"
+fuzzy_jump_dir = "Alt+C, f"
+
+# 直感的なエイリアス名やハイフン区切り記法も使用可能
+quit = "q"                      # exit のエイリアス
+exit-and-cd = "Ctrl-Q"          # ハイフン区切りや大文字小文字の揺れも許容
+up = "k, Up"                    # move_up のエイリアス
+down = "j, Down"                # move_down のエイリアス
+zip = "z, Ctrl+Alt+Z"           # zip_create のエイリアス
+unzip = "Z, Ctrl+Alt+X"         # zip_extract のエイリアス
+```
+
+### 柔軟なキー記法・エイリアス対応
+
+- **修飾キー記法**:
+  - `+` または `-` 区切りの両方に対応（例: `Ctrl+P`, `Ctrl-P`, `c-p`, `Control-P`, `Alt-C`, `a-c`, `Shift+Delete`, `s-delete` など）。
+  - 大文字・小文字は問いません（`ctrl+p`, `CTRL+P`, `Ctrl+P` いずれも可）。
+- **キー名エイリアス**:
+  - `Enter` / `Return` / `ret`
+  - `Backspace` / `bs`
+  - `Space` / `spc`
+  - `PageUp` / `pgup` / `PageDown` / `pgdn`
+  - `Minus` / `-` / `hyphen`
+  - `,` や `+` も単体キーとして指定可能
+- **アクションIDの柔軟性**:
+  - スネークケース（`exit_and_cd`）、ケバブケース（`exit-and-cd`）、大文字小文字混在に対応。
+  - 主要な短縮エイリアスに対応（`quit` → `exit`, `up` → `move_up`, `down` → `move_down`, `left` → `move_left`, `right` → `move_right`, `zip` → `zip_create`, `unzip` → `zip_extract` など）。
+  - 利用可能なアクションIDの完全なリストは [3.1 既定のキー割り当て (Vim-like)](#31-既定のキー割り当て-vim-like) を参照してください。
+
+---
+
+## 12. 設定ファイル (`config.toml`) の完全サンプル
+
+`%APPDATA%\tuif\config.toml` のフルスペック設定テンプレートです。必要に応じてコピーし、お好みの項目を編集してご利用ください。
+
+```toml
+# ========================================================
+# tuif 設定ファイル (`config.toml`)
+# 保存先: %APPDATA%\tuif\config.toml
+# ========================================================
+
+# --------------------------------------------------------
+# 1. 基本動作・操作挙動 ([general])
+# --------------------------------------------------------
+[general]
+confirm_delete = true        # 削除・ごみ箱移動時に確認ダイアログを表示するか (default: true)
+delete_to_trash = true       # 削除時にごみ箱へ送るか (false の場合は直接完全削除) (default: true)
+dirs_first = false           # ソート時にフォルダを常にファイルより上に優先表示するか (default: false)
+natural_sort = true          # 自然順ソート (file1, file2, file10) を使用するか (default: true)
+scroll_offset = 2            # ツリーペイン等のスクロール余白行数 (default: 2)
+
+# --------------------------------------------------------
+# 2. 画面レイアウト・表示 ([layout])
+# --------------------------------------------------------
+[layout]
+tree_width_percent = 24      # Drives / Tree ペインの横幅の割合 (10〜50, default: 24)
+min_col_width = 24           # マルチカラム一覧表示時の1列あたりの最小文字幅 (10〜80, default: 24)
+time_format = "%Y/%m/%d %H:%M" # 更新日時の表示フォーマット (default: "%Y/%m/%d %H:%M")
+
+# --------------------------------------------------------
+# 3. カラーテーマ ([theme] / [colors])
+# --------------------------------------------------------
+[theme]
+# 利用可能プリセット: "default", "nord", "monokai", "catppuccin", "solarized-dark", "light"
+preset = "nord"
+
+# 個別カラー上書き (指定しない項目はプリセットの色が適用されます)
+# 色指定形式: 標準カラー名 ("cyan", "yellow" 等) / 256色番号 ("0"〜"255") / HEXコード ("#88C0D0")
+[colors]
+bg = "#2E3440"                # 画面全体の背景色 ("none" または "reset" でターミナル背景透過)
+border = "#88C0D0"            # アクティブペイン枠・モーダル枠
+border_inactive = "#4C566A"   # 非アクティブペイン枠
+cursor_fg = "#2E3440"         # カーソル行文字色
+cursor_bg = "#88C0D0"         # カーソル行背景色
+folder = "#81A1C1"            # ディレクトリ表示色
+file = "#ECEFF4"              # 通常ファイル表示色
+symlink = "#B48EAD"           # シンボリックリンク・ジャンクション色
+executable = "#A3BE8C"        # 実行可能ファイル (.exe, .bat, .cmd, .ps1 等)
+selected = "#EBCB8B"          # 複数選択マーク・ハイライト色
+status_bar_fg = "#E5E9F0"     # ステータスバー文字色
+status_bar_bg = "#3B4252"     # ステータスバー背景色
+menu_bar_active_fg = "#2E3440"# メニューバーアクティブ項目文字色
+menu_bar_active_bg = "#88C0D0"# メニューバーアクティブ項目背景色
+tree_current = "#88C0D0"      # ツリーペインでのカレントフォルダ表示色
+tree_cursor = "#EBCB8B"       # ツリーペインのカーソル色
+
+# --------------------------------------------------------
+# 4. キーマップ ([keymap])
+# --------------------------------------------------------
+[keymap]
+open = "Enter"
+open_default = "o, Shift+Enter"
+go_parent = "Backspace, -"
+exit = "q"
+exit_and_cd = "Ctrl+q"
+fuzzy_find_file = "Ctrl+P, Ctrl+F"
+fuzzy_live_grep = "Ctrl+G, Shift+F"
+fuzzy_jump_dir = "Alt+C, f"
+
+# --------------------------------------------------------
+# 5. 外部ツール連携 ([[external_apps]])
+# --------------------------------------------------------
+[[external_apps]]
+name = "Neovim"
+program = "nvim.exe"
+args = ["{path}"]
+key_chord = "Ctrl+Alt+V"
+is_gui = false
+
+[[external_apps]]
+name = "VS Code"
+program = "code"
+args = ["{path}"]
+key_chord = "Ctrl+Alt+E"
+is_gui = true
+
+[[external_apps]]
+name = "Lazygit"
+program = "lazygit.exe"
+args = []
+key_chord = "Ctrl+Alt+G"
+is_gui = false
+```

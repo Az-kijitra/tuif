@@ -1,4 +1,4 @@
-//! Trusted SFTP host keys (`%APPDATA%\cuifiler\known_hosts.toml`).
+//! Trusted SFTP host keys (`%APPDATA%\tuif\known_hosts.toml`).
 //!
 //! Trust-on-first-use: an unknown key must be confirmed by the user before any
 //! password is sent; a changed key is rejected during the handshake.

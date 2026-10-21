@@ -297,6 +297,9 @@ pub struct AppState {
     pub remote_dir: Option<String>,
     pub pending_handshake: Option<PendingHandshake>,
     pub active_transfer: Option<ActiveTransfer>,
+    pub theme: crate::theme::Theme,
+    pub general: crate::config::config_toml::GeneralConfig,
+    pub layout: crate::config::config_toml::LayoutConfig,
 }
 
 pub fn normalize_tree_key(path: &Path) -> String {
@@ -336,6 +339,9 @@ impl AppState {
             .map(|p| crate::config::config_toml::load(&p))
             .unwrap_or_default();
         let (keymap, rejected) = Keymap::from_custom(&cfg_load.keymap.entries);
+        let theme = cfg_load.theme;
+        let general = cfg_load.general;
+        let layout = cfg_load.layout;
 
         let mut status_message = String::from("j/k:Move  Enter:Open  BS/-:Up  Tab:Tree  y/x/p:Yank/Cut/Paste  /:Search  ;:Actions  F10:Menu  q:Quit");
         if !rejected.is_empty() {
@@ -387,6 +393,9 @@ impl AppState {
             remote_dir: None,
             pending_handshake: None,
             active_transfer: None,
+            theme,
+            general,
+            layout,
         };
         app.expand_ancestors_of_current_dir();
         app.reload_dir();
@@ -435,10 +444,12 @@ impl AppState {
             let rdir = rdir.clone();
             match session.list_dir(&rdir, self.ui_state.ui_show_hidden) {
                 Ok(mut list) => {
-                    query::sort_entries(
+                    query::sort_entries_with_options(
                         &mut list,
                         &self.ui_state.sort_key,
                         &self.ui_state.sort_order,
+                        self.general.dirs_first,
+                        self.general.natural_sort,
                     );
                     self.entries = list;
                     self.apply_filter();
@@ -461,11 +472,13 @@ impl AppState {
                     self.current_dir = existing;
                 }
             }
-            match query::fs_list_dir(
+            match query::fs_list_dir_with_options(
                 &self.current_dir,
                 self.ui_state.ui_show_hidden,
                 &self.ui_state.sort_key,
                 &self.ui_state.sort_order,
+                self.general.dirs_first,
+                self.general.natural_sort,
             ) {
                 Ok(list) => {
                     self.entries = list;
@@ -1508,6 +1521,41 @@ impl AppState {
                         ClipboardItem::Remote { path, .. } => remote_targets.push(path),
                     }
                 }
+
+                if !self.general.confirm_delete {
+                    if !remote_targets.is_empty() {
+                        if let Some(session) = &self.remote_session {
+                            let mut succeeded = 0;
+                            let mut failed = 0;
+                            for t in &remote_targets {
+                                match session.remove_recursive(t) {
+                                    Ok(()) => succeeded += 1,
+                                    Err(_) => failed += 1,
+                                }
+                            }
+                            self.selected_paths.clear();
+                            self.reload_dir();
+                            self.status_message = format!(
+                                "Remote delete complete: {succeeded} succeeded / {failed} failed"
+                            );
+                        }
+                    } else if !local_targets.is_empty() {
+                        let permanent = action == ActionId::DeletePermanent || !self.general.delete_to_trash;
+                        let summary = if permanent {
+                            delete::delete_permanently(&local_targets)
+                        } else {
+                            delete::delete_to_trash(&local_targets)
+                        };
+                        self.selected_paths.clear();
+                        self.reload_dir();
+                        self.status_message = format!(
+                            "Delete complete: {} succeeded / {} failed",
+                            summary.ok, summary.failed
+                        );
+                    }
+                    return;
+                }
+
                 if !remote_targets.is_empty() {
                     let title = format!(
                         "Permanently delete {} remote item(s)? (y/Enter:Confirm / Esc:Cancel)",
@@ -1521,7 +1569,7 @@ impl AppState {
                         buffer: String::new(),
                     };
                 } else if !local_targets.is_empty() {
-                    let permanent = action == ActionId::DeletePermanent;
+                    let permanent = action == ActionId::DeletePermanent || !self.general.delete_to_trash;
                     let title = if permanent {
                         format!(
                             "Permanently delete {} item(s)? (y/Enter:Confirm / Esc:Cancel)",
@@ -2475,6 +2523,7 @@ impl AppState {
                 if let InputPromptKind::ConfirmDelete { permanent, targets } = kind {
                     match ev.code {
                         KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            let permanent = permanent || !self.general.delete_to_trash;
                             let summary = if permanent {
                                 delete::delete_permanently(&targets)
                             } else {
@@ -3367,6 +3416,7 @@ impl AppState {
             area,
             !self.search_query.is_empty(),
             self.ui_state.ui_show_tree,
+            self.layout.tree_width_percent,
         );
 
         // Path / Search bar
@@ -3493,8 +3543,8 @@ impl AppState {
                         self.focused_vis_idx,
                         self.ui_state.ui_show_size,
                         self.ui_state.ui_show_time,
-                        ev.column,
-                        ev.row,
+                        self.layout.min_col_width,
+                        (ev.column, ev.row),
                     ) {
                         let prev_idx = self.focused_vis_idx;
                         self.focused_vis_idx = vis_idx;
@@ -3539,8 +3589,8 @@ impl AppState {
                         self.focused_vis_idx,
                         self.ui_state.ui_show_size,
                         self.ui_state.ui_show_time,
-                        ev.column,
-                        ev.row,
+                        self.layout.min_col_width,
+                        (ev.column, ev.row),
                     ) {
                         self.focused_vis_idx = vis_idx;
                         if let Some(entry) = self.focused_entry() {

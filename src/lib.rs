@@ -11,5 +11,6 @@ pub mod fs_ops;
 pub mod keymap;
 pub mod remote;
 pub mod shared;
+pub mod theme;
 pub mod tui;
 pub mod viewer;

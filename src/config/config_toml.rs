@@ -38,6 +38,7 @@ use std::io;
 use std::path::Path;
 
 use crate::shared::schema::ui_theme::UiThemeRaw;
+use crate::theme::{CustomColors, Theme};
 
 /// One raw `input_keymap_custom` table entry, before any validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,16 +66,65 @@ pub struct KeymapRawLoadResult {
     pub parse_error: Option<KeymapParseError>,
 }
 
+/// General runtime and operational options configured in `[general]` of `config.toml`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneralConfig {
+    pub confirm_delete: bool,
+    pub delete_to_trash: bool,
+    pub dirs_first: bool,
+    pub natural_sort: bool,
+    pub scroll_offset: usize,
+}
+
+impl Default for GeneralConfig {
+    fn default() -> Self {
+        Self {
+            confirm_delete: true,
+            delete_to_trash: true,
+            dirs_first: false,
+            natural_sort: true,
+            scroll_offset: 2,
+        }
+    }
+}
+
+/// UI layout options configured in `[layout]` of `config.toml`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayoutConfig {
+    pub tree_width_percent: u16,
+    pub min_col_width: usize,
+    pub time_format: String,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            tree_width_percent: 24,
+            min_col_width: 24,
+            time_format: "%Y/%m/%d %H:%M".to_string(),
+        }
+    }
+}
+
 /// Everything read from `config.toml` in one go (R-917-8).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigTomlLoadResult {
     pub keymap: KeymapRawLoadResult,
     pub ui_theme: UiThemeRaw,
+    pub theme: Theme,
+    pub general: GeneralConfig,
+    pub layout: LayoutConfig,
 }
 
 impl Default for ConfigTomlLoadResult {
     fn default() -> Self {
-        Self { keymap: KeymapRawLoadResult::default(), ui_theme: UiThemeRaw::Missing }
+        Self {
+            keymap: KeymapRawLoadResult::default(),
+            ui_theme: UiThemeRaw::Missing,
+            theme: Theme::default(),
+            general: GeneralConfig::default(),
+            layout: LayoutConfig::default(),
+        }
     }
 }
 
@@ -86,6 +136,9 @@ fn whole_file_failure(message: String, line: Option<u32>) -> ConfigTomlLoadResul
             parse_error: Some(KeymapParseError { message, line, whole_file: true }),
         },
         ui_theme: UiThemeRaw::Missing,
+        theme: Theme::default(),
+        general: GeneralConfig::default(),
+        layout: LayoutConfig::default(),
     }
 }
 
@@ -129,28 +182,154 @@ pub fn load(path: &Path) -> ConfigTomlLoadResult {
     let Some(table) = value.as_table() else { return ConfigTomlLoadResult::default() };
     let ui_theme = raw_ui_theme(table);
 
-    let keymap = match table.get("input_keymap_custom") {
-        None => KeymapRawLoadResult::default(),
-        Some(toml::Value::Table(entries_table)) => {
-            let entries = entries_table
-                .iter()
-                .map(|(action_id, value)| RawKeymapEntry {
-                    action_id: action_id.clone(),
-                    value: value.as_str().map(|s| s.to_string()),
-                })
-                .collect();
-            KeymapRawLoadResult { entries, parse_error: None }
+    let mut theme = match table.get("theme") {
+        Some(toml::Value::Table(theme_table)) => {
+            let preset = theme_table
+                .get("preset")
+                .or_else(|| theme_table.get("name"))
+                .or_else(|| theme_table.get("theme"))
+                .and_then(|v| v.as_str());
+            if let Some(preset_name) = preset {
+                Theme::from_preset(preset_name)
+            } else {
+                default_theme_from_ui_theme(&ui_theme)
+            }
         }
-        Some(_) => KeymapRawLoadResult {
-            entries: Vec::new(),
-            parse_error: Some(KeymapParseError {
-                message: "input_keymap_custom must be a table".to_string(),
-                line: None,
-                whole_file: false,
-            }),
-        },
+        Some(toml::Value::String(preset_name)) => Theme::from_preset(preset_name),
+        _ => default_theme_from_ui_theme(&ui_theme),
     };
-    ConfigTomlLoadResult { keymap, ui_theme }
+
+    if let Some(toml::Value::Table(colors_table)) = table.get("colors") {
+        let mut custom = CustomColors::default();
+        for (key, val) in colors_table {
+            if let toml::Value::String(s) = val {
+                match key.as_str() {
+                    "bg" | "background" => custom.bg = Some(s.clone()),
+                    "border" => custom.border = Some(s.clone()),
+                    "border_inactive" => custom.border_inactive = Some(s.clone()),
+                    "cursor_fg" => custom.cursor_fg = Some(s.clone()),
+                    "cursor_bg" => custom.cursor_bg = Some(s.clone()),
+                    "folder" => custom.folder = Some(s.clone()),
+                    "file" => custom.file = Some(s.clone()),
+                    "symlink" => custom.symlink = Some(s.clone()),
+                    "executable" => custom.executable = Some(s.clone()),
+                    "selected" | "selected_mark" => custom.selected = Some(s.clone()),
+                    "status_bar_fg" => custom.status_bar_fg = Some(s.clone()),
+                    "status_bar_bg" => custom.status_bar_bg = Some(s.clone()),
+                    "menu_bar_active_fg" => custom.menu_bar_active_fg = Some(s.clone()),
+                    "menu_bar_active_bg" => custom.menu_bar_active_bg = Some(s.clone()),
+                    "tree_current" => custom.tree_current = Some(s.clone()),
+                    "tree_cursor" => custom.tree_cursor = Some(s.clone()),
+                    _ => {}
+                }
+            }
+        }
+        theme.apply_overrides(&custom);
+    }
+
+    let mut general = GeneralConfig::default();
+    if let Some(toml::Value::Table(gen_table)) = table.get("general") {
+        if let Some(toml::Value::Boolean(b)) = gen_table.get("confirm_delete") {
+            general.confirm_delete = *b;
+        }
+        if let Some(toml::Value::Boolean(b)) = gen_table.get("delete_to_trash") {
+            general.delete_to_trash = *b;
+        }
+        if let Some(toml::Value::Boolean(b)) = gen_table.get("dirs_first") {
+            general.dirs_first = *b;
+        }
+        if let Some(toml::Value::Boolean(b)) = gen_table.get("natural_sort") {
+            general.natural_sort = *b;
+        }
+        if let Some(toml::Value::Integer(i)) = gen_table.get("scroll_offset") {
+            if *i >= 0 {
+                general.scroll_offset = (*i as usize).min(20);
+            }
+        }
+    }
+
+    let mut layout = LayoutConfig::default();
+    if let Some(toml::Value::Table(lay_table)) = table.get("layout") {
+        if let Some(toml::Value::Integer(i)) = lay_table.get("tree_width_percent") {
+            if (10..=50).contains(i) {
+                layout.tree_width_percent = *i as u16;
+            }
+        }
+        if let Some(toml::Value::Integer(i)) = lay_table.get("min_col_width") {
+            if (10..=80).contains(i) {
+                layout.min_col_width = *i as usize;
+            }
+        }
+        if let Some(toml::Value::String(s)) = lay_table.get("time_format") {
+            if !s.trim().is_empty() {
+                layout.time_format = s.clone();
+            }
+        }
+    }
+
+    let keymap = match (table.get("input_keymap_custom"), table.get("keymap")) {
+        (None, None) => KeymapRawLoadResult::default(),
+        (legacy, modern) => {
+            let mut entries_map = std::collections::BTreeMap::new();
+            let mut has_type_error = false;
+            let mut error_table_name = "input_keymap_custom";
+
+            if let Some(val) = legacy {
+                match val {
+                    toml::Value::Table(t) => {
+                        for (k, v) in t {
+                            entries_map.insert(k.clone(), v.as_str().map(|s| s.to_string()));
+                        }
+                    }
+                    _ => {
+                        has_type_error = true;
+                        error_table_name = "input_keymap_custom";
+                    }
+                }
+            }
+
+            if let Some(val) = modern {
+                match val {
+                    toml::Value::Table(t) => {
+                        for (k, v) in t {
+                            // [keymap] takes precedence over legacy [input_keymap_custom]
+                            entries_map.insert(k.clone(), v.as_str().map(|s| s.to_string()));
+                        }
+                        has_type_error = false;
+                    }
+                    _ => {
+                        has_type_error = true;
+                        error_table_name = "keymap";
+                    }
+                }
+            }
+
+            if has_type_error {
+                KeymapRawLoadResult {
+                    entries: Vec::new(),
+                    parse_error: Some(KeymapParseError {
+                        message: format!("{error_table_name} must be a table"),
+                        line: None,
+                        whole_file: false,
+                    }),
+                }
+            } else {
+                let entries = entries_map
+                    .into_iter()
+                    .map(|(action_id, value)| RawKeymapEntry { action_id, value })
+                    .collect();
+                KeymapRawLoadResult { entries, parse_error: None }
+            }
+        }
+    };
+    ConfigTomlLoadResult { keymap, ui_theme, theme, general, layout }
+}
+
+fn default_theme_from_ui_theme(ui_theme: &UiThemeRaw) -> Theme {
+    match ui_theme {
+        UiThemeRaw::Str(s) => Theme::from_preset(s),
+        _ => Theme::preset_default(),
+    }
 }
 
 #[cfg(test)]
@@ -362,5 +541,95 @@ mod tests {
         assert_eq!(mtime_before, mtime_after, "mtime must be unchanged (no write ever happens)");
         let entries: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
         assert_eq!(entries.len(), 1, "load must never create a sibling file (no .bak, no .tmp)");
+    }
+
+    #[test]
+    fn loads_theme_preset_and_color_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let content = r##"
+[theme]
+preset = "nord"
+
+[colors]
+border = "#FF0000"
+folder = "green"
+"##;
+        fs::write(&path, content).unwrap();
+
+        let r = load(&path);
+        assert_eq!(r.theme.border, ratatui::style::Color::Rgb(255, 0, 0));
+        assert_eq!(r.theme.folder, ratatui::style::Color::Green);
+        // Untouched colors in theme should match nord preset
+        assert_eq!(r.theme.cursor_fg, ratatui::style::Color::Rgb(46, 52, 64));
+    }
+
+    #[test]
+    fn falls_back_to_light_preset_when_legacy_ui_theme_is_light() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "ui_theme = \"light\"\n").unwrap();
+
+        let r = load(&path);
+        assert_eq!(r.theme, Theme::preset_light());
+    }
+
+    #[test]
+    fn loads_general_and_layout_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let content = r#"
+[general]
+confirm_delete = false
+delete_to_trash = false
+dirs_first = false
+natural_sort = false
+scroll_offset = 4
+
+[layout]
+tree_width_percent = 30
+min_col_width = 35
+time_format = "%Y-%m-%d %H:%M"
+"#;
+        fs::write(&path, content).unwrap();
+
+        let r = load(&path);
+        assert!(!r.general.confirm_delete);
+        assert!(!r.general.delete_to_trash);
+        assert!(!r.general.dirs_first);
+        assert!(!r.general.natural_sort);
+        assert_eq!(r.general.scroll_offset, 4);
+
+        assert_eq!(r.layout.tree_width_percent, 30);
+        assert_eq!(r.layout.min_col_width, 35);
+        assert_eq!(r.layout.time_format, "%Y-%m-%d %H:%M");
+    }
+
+    #[test]
+    fn loads_keymap_alias_and_precedence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let content = r#"
+[input_keymap_custom]
+open = "o"
+exit = "q"
+
+[keymap]
+open = "Enter"
+fuzzy_find = "Ctrl+P"
+"#;
+        fs::write(&path, content).unwrap();
+
+        let r = load(&path);
+        assert!(r.keymap.parse_error.is_none());
+        let entries = sorted(r.keymap.entries);
+        assert_eq!(
+            entries,
+            sorted(vec![
+                RawKeymapEntry { action_id: "open".into(), value: Some("Enter".into()) },
+                RawKeymapEntry { action_id: "exit".into(), value: Some("q".into()) },
+                RawKeymapEntry { action_id: "fuzzy_find".into(), value: Some("Ctrl+P".into()) },
+            ])
+        );
     }
 }

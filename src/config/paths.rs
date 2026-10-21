@@ -1,4 +1,4 @@
-//! Config directory resolution for `cuifiler` (`%APPDATA%\cuifiler\` on Windows).
+//! Config directory resolution for `tuif` (`%APPDATA%\tuif\` on Windows).
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
@@ -6,19 +6,21 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-/// Name of the override environment variable (`CUIFILER_CONFIG_DIR` or `REFLEXFILES_CONFIG_DIR`).
-const CONFIG_DIR_ENV: &str = "CUIFILER_CONFIG_DIR";
+/// Name of the override environment variable (`TUIF_CONFIG_DIR`, `CUIFILER_CONFIG_DIR`, or `REFLEXFILES_CONFIG_DIR`).
+const CONFIG_DIR_ENV: &str = "TUIF_CONFIG_DIR";
+#[cfg(debug_assertions)]
+const CUIFILER_CONFIG_DIR_ENV: &str = "CUIFILER_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const LEGACY_CONFIG_DIR_ENV: &str = "REFLEXFILES_CONFIG_DIR";
 
-/// Returns the app config directory (`%APPDATA%\cuifiler`), creating it if missing.
+/// Returns the app config directory (`%APPDATA%\tuif`), creating it if missing.
 pub fn app_config_dir() -> io::Result<PathBuf> {
     if let Some(dir) = config_dir_override()? {
         return Ok(dir);
     }
     let appdata = std::env::var_os("APPDATA")
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "APPDATA environment variable is not set"))?;
-    let dir = PathBuf::from(appdata).join("cuifiler");
+    let dir = PathBuf::from(appdata).join("tuif");
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -95,7 +97,9 @@ pub fn override_notice_line(dir: &Path) -> String {
 
 #[cfg(debug_assertions)]
 fn read_override_var() -> Option<OsString> {
-    std::env::var_os(CONFIG_DIR_ENV).or_else(|| std::env::var_os(LEGACY_CONFIG_DIR_ENV))
+    std::env::var_os(CONFIG_DIR_ENV)
+        .or_else(|| std::env::var_os(CUIFILER_CONFIG_DIR_ENV))
+        .or_else(|| std::env::var_os(LEGACY_CONFIG_DIR_ENV))
 }
 
 #[cfg(not(debug_assertions))]

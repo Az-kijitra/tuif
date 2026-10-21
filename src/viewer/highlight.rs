@@ -141,6 +141,49 @@ pub fn parse_ansi_line_with_scroll(line: &str, scroll_x: usize) -> Vec<Span<'sta
     spans
 }
 
+/// Strips ANSI SGR and escape sequences from a string to return plain text.
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\x1b' && i + 1 < chars.len() && chars[i + 1] == '[' {
+            i += 2;
+            while i < chars.len() && !chars[i].is_ascii_alphabetic() {
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
+            }
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+/// Finds 0-based indices of lines containing `query` (case-insensitive plain text search).
+pub fn find_matching_lines(lines: &[String], query: &str) -> Vec<usize> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let needle = trimmed.to_lowercase();
+    lines
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            let plain = strip_ansi(line);
+            if plain.to_lowercase().contains(&needle) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 fn apply_sgr_params(style: &mut Style, params: &str) {
     if params.is_empty() {
         *style = Style::default();
@@ -258,5 +301,26 @@ mod tests {
         assert_eq!(spans[0].style.bg, Some(Color::Rgb(38, 32, 31)));
         assert_eq!(spans[2].content, "old");
         assert!(spans[2].style.add_modifier.contains(Modifier::CROSSED_OUT));
+    }
+
+    #[test]
+    fn test_strip_ansi_and_find_matching_lines() {
+        let lines = vec![
+            "\x1b[32mhello\x1b[0m world".to_string(),
+            "Rust programming".to_string(),
+            "\x1b[1;31mHELLO\x1b[0m again".to_string(),
+            "something else".to_string(),
+        ];
+        assert_eq!(strip_ansi(&lines[0]), "hello world");
+        assert_eq!(strip_ansi(&lines[2]), "HELLO again");
+
+        let matches = find_matching_lines(&lines, "hello");
+        assert_eq!(matches, vec![0, 2]);
+
+        let matches_case = find_matching_lines(&lines, "RUST");
+        assert_eq!(matches_case, vec![1]);
+
+        let matches_empty = find_matching_lines(&lines, "   ");
+        assert!(matches_empty.is_empty());
     }
 }

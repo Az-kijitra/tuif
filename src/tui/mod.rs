@@ -477,6 +477,10 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
         ref preview_lines,
         scroll_y,
         scroll_x,
+        ref search_query,
+        ref search_input,
+        ref matching_lines,
+        match_cursor,
         ..
     } = app.overlay
     else {
@@ -498,13 +502,26 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
         .skip(scroll_y)
         .take(view_height)
         .map(|(idx, line)| {
+            let is_match = matching_lines.contains(&idx);
+            let is_current = match_cursor.and_then(|c| matching_lines.get(c)).copied() == Some(idx);
             let mut spans = if active_preview {
-                vec![Span::raw("  ")]
+                if is_current {
+                    vec![Span::styled("▶ ", Style::default().fg(app.theme.selected).add_modifier(Modifier::BOLD))]
+                } else if is_match {
+                    vec![Span::styled("● ", Style::default().fg(app.theme.tree_cursor).add_modifier(Modifier::BOLD))]
+                } else {
+                    vec![Span::raw("  ")]
+                }
             } else {
-                vec![Span::styled(
-                    format!("{:>5} │ ", idx + 1),
-                    Style::default().fg(Color::DarkGray),
-                )]
+                let gutter_style = if is_current {
+                    Style::default().fg(app.theme.selected).add_modifier(Modifier::BOLD)
+                } else if is_match {
+                    Style::default().fg(app.theme.tree_cursor).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(app.theme.border_inactive)
+                };
+                let marker = if is_current { "▶" } else if is_match { "●" } else { "│" };
+                vec![Span::styled(format!("{:>5} {marker} ", idx + 1), gutter_style)]
             };
             spans.extend(crate::viewer::highlight::parse_ansi_line_with_scroll(
                 line, scroll_x,
@@ -522,25 +539,45 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
     } else {
         ""
     };
+    let search_tag = if let Some(ref q) = search_query {
+        if matching_lines.is_empty() {
+            format!(" [Pattern not found: \"{q}\"]")
+        } else {
+            let cur_pos = match_cursor.map(|c| c + 1).unwrap_or(1);
+            format!(" [Match {cur_pos}/{} for \"{q}\"]", matching_lines.len())
+        }
+    } else {
+        String::new()
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.theme.border))
         .style(Style::default().bg(app.theme.bg))
         .title(format!(
-            " Viewer{mode_tag}: {title} (Line {}/{}) ",
+            " Viewer{mode_tag}: {title} (Line {}/{}){search_tag} ",
             scroll_y + 1,
             lines.len().max(1)
         ));
     frame.render_widget(Paragraph::new(visible_lines).style(Style::default().bg(app.theme.bg)).block(block), chunks[0]);
 
-    let footer_text = if is_markdown {
-        " j/k/Up/Down:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  p/Tab:Preview/Raw  q/Esc:Close"
+    if let Some(ref input) = search_input {
+        let prompt_line = Line::from(vec![
+            Span::styled(" /", Style::default().fg(app.theme.menu_bar_active_fg).bg(app.theme.menu_bar_active_bg).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{input}█"), Style::default().fg(app.theme.cursor_fg).bg(app.theme.cursor_bg)),
+            Span::styled("  (Enter:Search, Esc:Cancel)", Style::default().fg(app.theme.status_bar_fg).bg(app.theme.status_bar_bg)),
+        ]);
+        let search_footer = Paragraph::new(prompt_line).style(Style::default().bg(app.theme.status_bar_bg));
+        frame.render_widget(search_footer, chunks[1]);
     } else {
-        " j/k/Up/Down:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  q/Esc:Close"
-    };
-    let footer = Paragraph::new(footer_text)
-        .style(Style::default().fg(app.theme.cursor_fg).bg(app.theme.cursor_bg));
-    frame.render_widget(footer, chunks[1]);
+        let footer_text = if is_markdown {
+            " j/k:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  /:Search  n/N:Next/Prev  p/Tab:Preview/Raw  q/Esc:Close"
+        } else {
+            " j/k:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  /:Search  n/N:Next/Prev  q/Esc:Close"
+        };
+        let footer = Paragraph::new(footer_text)
+            .style(Style::default().fg(app.theme.cursor_fg).bg(app.theme.cursor_bg));
+        frame.render_widget(footer, chunks[1]);
+    }
 }
 
 fn draw_input_modal(frame: &mut Frame, area: Rect, title: &str, buffer: &str, theme: &crate::theme::Theme) {

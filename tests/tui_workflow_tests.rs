@@ -472,4 +472,81 @@ fn fuzzy_search_shortcuts_and_post_selection_navigation() {
     assert_eq!(app.focus_pane, FocusPane::FileList);
 }
 
+#[test]
+fn viewer_search_and_navigation_workflow() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().to_path_buf();
+    let sample = root.join("sample.txt");
+    let content = "line 0: alpha\nline 1: beta target\nline 2: gamma\nline 3: delta target\nline 4: epsilon\n";
+    std::fs::write(&sample, content).unwrap();
+
+    let mut app = AppState::new(root);
+    // Open sample.txt in built-in viewer
+    app.handle_key_event(key(KeyCode::Enter));
+    assert!(matches!(app.overlay, OverlayMode::Viewer { .. }));
+
+    // 1. Press '/' to open search input prompt
+    app.handle_key_event(key(KeyCode::Char('/')));
+    if let OverlayMode::Viewer { ref search_input, .. } = app.overlay {
+        assert_eq!(search_input.as_deref(), Some(""));
+    } else {
+        panic!("expected viewer overlay");
+    }
+
+    // 2. Type "target" and hit Enter
+    for c in "target".chars() {
+        app.handle_key_event(key(KeyCode::Char(c)));
+    }
+    app.handle_key_event(key(KeyCode::Enter));
+
+    // Should find matches on line 1 and line 3, and jump scroll_y to line 1
+    if let OverlayMode::Viewer {
+        ref search_query,
+        ref search_input,
+        ref matching_lines,
+        match_cursor,
+        scroll_y,
+        ..
+    } = app.overlay
+    {
+        assert_eq!(search_query.as_deref(), Some("target"));
+        assert!(search_input.is_none());
+        assert_eq!(matching_lines, &vec![1, 3]);
+        assert_eq!(match_cursor, Some(0));
+        assert_eq!(scroll_y, 1);
+    } else {
+        panic!("expected viewer overlay");
+    }
+
+    // 3. 'n' jumps to next match (line 3)
+    app.handle_key_event(key(KeyCode::Char('n')));
+    if let OverlayMode::Viewer { match_cursor, scroll_y, .. } = app.overlay {
+        assert_eq!(match_cursor, Some(1));
+        assert_eq!(scroll_y, 3);
+    }
+
+    // 4. 'N' jumps back to previous match (line 1)
+    app.handle_key_event(key(KeyCode::Char('N')));
+    if let OverlayMode::Viewer { match_cursor, scroll_y, .. } = app.overlay {
+        assert_eq!(match_cursor, Some(0));
+        assert_eq!(scroll_y, 1);
+    }
+
+    // 5. Render in Terminal TestBackend
+    let backend = TestBackend::new(90, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|f| tui::draw(f, &app)).unwrap();
+
+    // 6. 'Esc' clears search query
+    app.handle_key_event(key(KeyCode::Esc));
+    if let OverlayMode::Viewer { ref search_query, .. } = app.overlay {
+        assert!(search_query.is_none());
+    }
+
+    // 7. 'Esc' closes the viewer
+    app.handle_key_event(key(KeyCode::Esc));
+    assert_eq!(app.overlay, OverlayMode::None);
+}
+
+
 

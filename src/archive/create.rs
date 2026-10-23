@@ -42,7 +42,10 @@ fn io_failure(err: &std::io::Error) -> ArchiveError {
 fn zip_failure(err: zip::result::ZipError) -> ArchiveError {
     match err {
         zip::result::ZipError::Io(e) => io_failure(&e),
-        other => ArchiveError::new(Code::IoError, format!("cannot write the ZIP archive: {other}")),
+        other => ArchiveError::new(
+            Code::IoError,
+            format!("cannot write the ZIP archive: {other}"),
+        ),
     }
 }
 
@@ -54,13 +57,22 @@ fn zip_failure(err: zip::result::ZipError) -> ArchiveError {
 /// (case-insensitive).
 pub fn resolve_output_path(output_path: &str, base_dir: &Path) -> Result<PathBuf, ArchiveError> {
     if output_path.trim().is_empty() {
-        return Err(ArchiveError::new(Code::InvalidName, "the output name is empty"));
+        return Err(ArchiveError::new(
+            Code::InvalidName,
+            "the output name is empty",
+        ));
     }
     if !base_dir.is_absolute() {
-        return Err(ArchiveError::new(Code::InvalidPath, "the base directory is not an absolute path"));
+        return Err(ArchiveError::new(
+            Code::InvalidPath,
+            "the base directory is not an absolute path",
+        ));
     }
     if output_path.ends_with('\\') || output_path.ends_with('/') {
-        return Err(ArchiveError::new(Code::InvalidName, "the output path has no file name"));
+        return Err(ArchiveError::new(
+            Code::InvalidName,
+            "the output path has no file name",
+        ));
     }
     let given = Path::new(output_path);
     let has_prefix = matches!(given.components().next(), Some(Component::Prefix(_)));
@@ -74,11 +86,11 @@ pub fn resolve_output_path(output_path: &str, base_dir: &Path) -> Result<PathBuf
     } else {
         base_dir.join(given)
     };
-    let name = full
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| ArchiveError::new(Code::InvalidName, "the output path has no usable file name"))?;
-    validate_output_file_name(name).map_err(|code| ArchiveError::new(code, "the output file name is not allowed"))?;
+    let name = full.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+        ArchiveError::new(Code::InvalidName, "the output path has no usable file name")
+    })?;
+    validate_output_file_name(name)
+        .map_err(|code| ArchiveError::new(code, "the output file name is not allowed"))?;
     if name.to_lowercase().ends_with(".zip") {
         Ok(full)
     } else {
@@ -89,10 +101,14 @@ pub fn resolve_output_path(output_path: &str, base_dir: &Path) -> Result<PathBuf
 
 /// The name an item gets inside the archive (R-327-1).
 fn item_name(item: &Path) -> Result<String, ArchiveError> {
-    let name = item
-        .file_name()
-        .ok_or_else(|| ArchiveError::new(Code::InvalidPath, "the item has no name to store in the archive"))?;
-    os_name_to_utf8(name).map_err(|code| ArchiveError::new(code, "the item name is not valid Unicode"))
+    let name = item.file_name().ok_or_else(|| {
+        ArchiveError::new(
+            Code::InvalidPath,
+            "the item has no name to store in the archive",
+        )
+    })?;
+    os_name_to_utf8(name)
+        .map_err(|code| ArchiveError::new(code, "the item name is not valid Unicode"))
 }
 
 /// The full pre-check with NO side effect. Order (SPEC-0200-0001 §3.4.3):
@@ -103,14 +119,25 @@ fn item_name(item: &Path) -> Result<String, ArchiveError> {
 /// (parent missing, R-324-1) -> `destination_inside_source` (R-325-1; also when
 /// identity cannot be established) -> `already_exists` (existing directory) ->
 /// existing file: `overwrite_required = true`.
-pub fn check_create(items: &[PathBuf], output_path: &str, base_dir: &Path) -> Result<CheckedCreate, ArchiveError> {
+pub fn check_create(
+    items: &[PathBuf],
+    output_path: &str,
+    base_dir: &Path,
+) -> Result<CheckedCreate, ArchiveError> {
     if items.is_empty() {
         return Err(ArchiveError::new(Code::NoItems, "nothing is selected"));
     }
     for item in items {
         if let Err(e) = fs::symlink_metadata(item) {
-            let code = if e.kind() == std::io::ErrorKind::NotFound { Code::NotFound } else { classify_io_error(&e) };
-            return Err(ArchiveError::new(code, format!("cannot access `{}`: {e}", item.display())));
+            let code = if e.kind() == std::io::ErrorKind::NotFound {
+                Code::NotFound
+            } else {
+                classify_io_error(&e)
+            };
+            return Err(ArchiveError::new(
+                code,
+                format!("cannot access `{}`: {e}", item.display()),
+            ));
         }
     }
     for item in items {
@@ -120,24 +147,50 @@ pub fn check_create(items: &[PathBuf], output_path: &str, base_dir: &Path) -> Re
     let existing = fs::symlink_metadata(&output);
     if let Ok(meta) = &existing {
         if meta.file_type().is_symlink() {
-            return Err(ArchiveError::new(Code::InvalidPath, "the output path is a link"));
+            return Err(ArchiveError::new(
+                Code::InvalidPath,
+                "the output path is a link",
+            ));
         }
     }
     match output.parent().map(fs::metadata) {
         Some(Ok(meta)) if meta.is_dir() => {}
-        _ => return Err(ArchiveError::new(Code::DestinationNotFound, "the output folder does not exist")),
+        _ => {
+            return Err(ArchiveError::new(
+                Code::DestinationNotFound,
+                "the output folder does not exist",
+            ))
+        }
     }
     check_not_inside_sources(items, &output, existing.is_ok())?;
     match existing {
-        Ok(meta) if meta.is_dir() => Err(ArchiveError::new(Code::AlreadyExists, "a folder with the output name exists")),
-        Ok(_) => Ok(CheckedCreate { output_path: output, overwrite_required: true }),
-        Err(_) => Ok(CheckedCreate { output_path: output, overwrite_required: false }),
+        Ok(meta) if meta.is_dir() => Err(ArchiveError::new(
+            Code::AlreadyExists,
+            "a folder with the output name exists",
+        )),
+        Ok(_) => Ok(CheckedCreate {
+            output_path: output,
+            overwrite_required: true,
+        }),
+        Err(_) => Ok(CheckedCreate {
+            output_path: output,
+            overwrite_required: false,
+        }),
     }
 }
 
 /// R-325 / R-325-1 (MUST-65): identity cannot be established -> reject.
-fn check_not_inside_sources(items: &[PathBuf], output: &Path, output_exists: bool) -> Result<(), ArchiveError> {
-    let inside = || ArchiveError::new(Code::DestinationInsideSource, "the output file would be inside its own source");
+fn check_not_inside_sources(
+    items: &[PathBuf],
+    output: &Path,
+    output_exists: bool,
+) -> Result<(), ArchiveError> {
+    let inside = || {
+        ArchiveError::new(
+            Code::DestinationInsideSource,
+            "the output file would be inside its own source",
+        )
+    };
     let output_norm = normalize_allowing_missing(output).ok_or_else(inside)?;
     for item in items {
         // Links are skipped by the creation itself (R-327-8).
@@ -150,7 +203,9 @@ fn check_not_inside_sources(items: &[PathBuf], output: &Path, output_exists: boo
             if output_norm.starts_with(&canonical) {
                 return Err(inside());
             }
-        } else if output_norm == canonical || (output_exists && same_entity(item, output) != Some(false)) {
+        } else if output_norm == canonical
+            || (output_exists && same_entity(item, output) != Some(false))
+        {
             return Err(inside());
         }
     }
@@ -183,7 +238,11 @@ fn ignore_commit(_final_path: &Path) {}
 
 impl CreateHooks<'static> {
     pub fn none() -> CreateHooks<'static> {
-        CreateHooks { should_cancel: &never_cancel, on_progress: &ignore_progress, before_commit: &ignore_commit }
+        CreateHooks {
+            should_cancel: &never_cancel,
+            on_progress: &ignore_progress,
+            before_commit: &ignore_commit,
+        }
     }
 }
 
@@ -207,11 +266,25 @@ struct Node {
     modified: Option<SystemTime>,
 }
 
-fn add_node(nodes: &mut Vec<Node>, path: &Path, name: String, meta: &fs::Metadata) -> Result<(), ArchiveError> {
+fn add_node(
+    nodes: &mut Vec<Node>,
+    path: &Path,
+    name: String,
+    meta: &fs::Metadata,
+) -> Result<(), ArchiveError> {
     if name.len() > MAX_NAME_BYTES {
-        return Err(ArchiveError::new(Code::InvalidPath, "an entry name is too long for the ZIP format"));
+        return Err(ArchiveError::new(
+            Code::InvalidPath,
+            "an entry name is too long for the ZIP format",
+        ));
     }
-    nodes.push(Node { path: path.to_path_buf(), name, is_dir: meta.is_dir(), len: meta.len(), modified: meta.modified().ok() });
+    nodes.push(Node {
+        path: path.to_path_buf(),
+        name,
+        is_dir: meta.is_dir(),
+        len: meta.len(),
+        modified: meta.modified().ok(),
+    });
     Ok(())
 }
 
@@ -241,7 +314,13 @@ fn scan(
         children.sort();
         for child in children {
             let child_name = item_name(&child).map_err(|e| e.with_entry(name.clone()))?;
-            scan(&child, format!("{name}/{child_name}"), nodes, skipped_links, should_cancel)?;
+            scan(
+                &child,
+                format!("{name}/{child_name}"),
+                nodes,
+                skipped_links,
+                should_cancel,
+            )?;
         }
     } else if meta.is_file() {
         add_node(nodes, path, name, &meta)?;
@@ -269,17 +348,28 @@ pub fn create_zip(
     }
     let checked = check_create(items, output_path, base_dir)?;
     if checked.overwrite_required && !overwrite {
-        return Err(ArchiveError::new(Code::Conflict, "the output file exists and overwriting was not confirmed"));
+        return Err(ArchiveError::new(
+            Code::Conflict,
+            "the output file exists and overwriting was not confirmed",
+        ));
     }
     let output = checked.output_path;
 
     let mut nodes = Vec::new();
     let mut skipped_links = 0usize;
     for item in items {
-        scan(item, item_name(item)?, &mut nodes, &mut skipped_links, hooks.should_cancel)?;
+        scan(
+            item,
+            item_name(item)?,
+            &mut nodes,
+            &mut skipped_links,
+            hooks.should_cancel,
+        )?;
     }
 
-    let parent = output.parent().ok_or_else(|| ArchiveError::new(Code::DestinationNotFound, "no output folder"))?;
+    let parent = output
+        .parent()
+        .ok_or_else(|| ArchiveError::new(Code::DestinationNotFound, "no output folder"))?;
     let mut temp = TempFile::create_in(parent).map_err(|e| io_failure(&e))?;
     write_archive(temp.file(), &nodes, hooks)?;
     temp.file().flush().map_err(|e| io_failure(&e))?;
@@ -292,7 +382,11 @@ pub fn create_zip(
         move_no_replace(temp.path(), &output).map_err(|e| io_failure(&e))?;
     }
     let _ = temp.into_path(); // committed
-    Ok(CreateResult { output_path: output, entries: nodes.len(), skipped_links })
+    Ok(CreateResult {
+        output_path: output,
+        entries: nodes.len(),
+        skipped_links,
+    })
 }
 
 fn write_archive(file: &mut File, nodes: &[Node], hooks: &CreateHooks) -> Result<(), ArchiveError> {
@@ -302,8 +396,16 @@ fn write_archive(file: &mut File, nodes: &[Node], hooks: &CreateHooks) -> Result
         if (hooks.should_cancel)() {
             return Err(canceled());
         }
-        (hooks.on_progress)(&ProgressEvent { name: &node.name, index: position + 1, total });
-        let method = if node.is_dir { zip::CompressionMethod::Stored } else { zip::CompressionMethod::Deflated };
+        (hooks.on_progress)(&ProgressEvent {
+            name: &node.name,
+            index: position + 1,
+            total,
+        });
+        let method = if node.is_dir {
+            zip::CompressionMethod::Stored
+        } else {
+            zip::CompressionMethod::Deflated
+        };
         let mut options = zip::write::SimpleFileOptions::default()
             .compression_method(method)
             .large_file(needs_large_file(node.len));
@@ -311,9 +413,13 @@ fn write_archive(file: &mut File, nodes: &[Node], hooks: &CreateHooks) -> Result
             options = options.last_modified_time(stamp);
         }
         if node.is_dir {
-            writer.add_directory(&node.name, options).map_err(|e| zip_failure(e).with_entry(node.name.clone()))?;
+            writer
+                .add_directory(&node.name, options)
+                .map_err(|e| zip_failure(e).with_entry(node.name.clone()))?;
         } else {
-            writer.start_file(&node.name, options).map_err(|e| zip_failure(e).with_entry(node.name.clone()))?;
+            writer
+                .start_file(&node.name, options)
+                .map_err(|e| zip_failure(e).with_entry(node.name.clone()))?;
             copy_source(&node.path, &mut writer, &node.name, hooks.should_cancel)?;
         }
     }
@@ -342,6 +448,8 @@ fn copy_source<W: Write>(
         if read == 0 {
             return Ok(());
         }
-        writer.write_all(&buffer[..read]).map_err(|e| io_failure(&e).with_entry(name))?;
+        writer
+            .write_all(&buffer[..read])
+            .map_err(|e| io_failure(&e).with_entry(name))?;
     }
 }

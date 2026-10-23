@@ -23,8 +23,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::shared::identity::{is_strictly_within, same_entity};
 use super::name_validation::{self, NameError};
+use crate::shared::identity::{is_strictly_within, same_entity};
 
 /// R-24: preflight rejection codes for a copy/move batch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +40,10 @@ pub enum TransferPreflightError {
 
 /// R-24: at least these conditions must be detected and the batch rejected
 /// before any transfer work is attempted (AC-72: zero side effects).
-pub fn preflight_transfer(items: &[PathBuf], destination: &Path) -> Result<(), TransferPreflightError> {
+pub fn preflight_transfer(
+    items: &[PathBuf],
+    destination: &Path,
+) -> Result<(), TransferPreflightError> {
     if items.is_empty() {
         return Err(TransferPreflightError::NoItems);
     }
@@ -88,7 +91,8 @@ pub fn preflight_transfer(items: &[PathBuf], destination: &Path) -> Result<(), T
             return Err(TransferPreflightError::SamePath);
         }
         if item.is_dir() {
-            let inside = is_strictly_within(item, destination).unwrap_or_else(|| destination.starts_with(item));
+            let inside = is_strictly_within(item, destination)
+                .unwrap_or_else(|| destination.starts_with(item));
             if inside {
                 return Err(TransferPreflightError::DestinationInsideSource);
             }
@@ -148,7 +152,8 @@ pub fn preflight_rename(path: &Path, new_name: &str) -> Result<(), MutatePreflig
     if candidate.exists() {
         // A case-only rename (`a.txt` -> `A.txt`) resolves to the entry itself
         // on case-insensitive filesystems: that is not a conflict.
-        let is_self = candidate.file_name() != path.file_name() && same_entity(path, &candidate) == Some(true);
+        let is_self = candidate.file_name() != path.file_name()
+            && same_entity(path, &candidate) == Some(true);
         if !is_self {
             return Err(MutatePreflightError::AlreadyExists);
         }
@@ -258,8 +263,13 @@ mod tests {
         fs::create_dir(&destination).expect("create destination");
         // `no_items` rejection: destination directory must remain empty.
         let _ = preflight_transfer(&[], &destination);
-        let entries: Vec<_> = fs::read_dir(&destination).expect("read destination").collect();
-        assert!(entries.is_empty(), "no_items preflight rejection must not create anything");
+        let entries: Vec<_> = fs::read_dir(&destination)
+            .expect("read destination")
+            .collect();
+        assert!(
+            entries.is_empty(),
+            "no_items preflight rejection must not create anything"
+        );
     }
 
     // SPEC-0300-0011 AC-55 (R-36, R-63): renaming onto an existing sibling
@@ -328,7 +338,13 @@ mod tests {
             Err(MutatePreflightError::InvalidName)
         );
 
-        assert_eq!(preflight_rename(&target, ""), Err(MutatePreflightError::Required));
-        assert_eq!(preflight_create(dir.path(), "", "file"), Err(MutatePreflightError::Required));
+        assert_eq!(
+            preflight_rename(&target, ""),
+            Err(MutatePreflightError::Required)
+        );
+        assert_eq!(
+            preflight_create(dir.path(), "", "file"),
+            Err(MutatePreflightError::Required)
+        );
     }
 }

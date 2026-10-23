@@ -6,7 +6,6 @@
 //! The process working directory is NEVER changed (other tests run in parallel); a relative path that
 //! might resolve against it (`.`, `src`, a random name) must still be refused.
 
-
 use std::io;
 
 use super::commands::{list_dir_checked, FsListDirErrorDto};
@@ -14,8 +13,15 @@ use super::commands::{list_dir_checked, FsListDirErrorDto};
 fn rand_name() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    format!("zz-abs-path-{nanos}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed))
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!(
+        "zz-abs-path-{nanos}-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 fn list(path: &str) -> Result<usize, FsListDirErrorDto> {
@@ -26,10 +32,27 @@ fn list(path: &str) -> Result<usize, FsListDirErrorDto> {
 #[test]
 fn ac643_relative_drive_relative_root_relative_and_empty_paths_are_invalid_path() {
     let random = rand_name();
-    for bad in ["C:", "C:src", "src", ".", "..", r"\foo", "/foo", "", r".\src", "C:/foo", r"\\server", r"\\.\PhysicalDrive0", random.as_str()] {
+    for bad in [
+        "C:",
+        "C:src",
+        "src",
+        ".",
+        "..",
+        r"\foo",
+        "/foo",
+        "",
+        r".\src",
+        "C:/foo",
+        r"\\server",
+        r"\\.\PhysicalDrive0",
+        random.as_str(),
+    ] {
         let err = list(bad).expect_err(&format!("{bad:?} must be refused"));
         assert_eq!(err.code, "invalid_path", "{bad:?}: {err:?}");
-        assert!(!err.message.is_empty(), "{bad:?}: the message is for display and must not be empty");
+        assert!(
+            !err.message.is_empty(),
+            "{bad:?}: the message is for display and must not be empty"
+        );
     }
 }
 
@@ -47,7 +70,8 @@ fn ac643_an_absolute_folder_still_lists_its_entries() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("a.txt"), "a").unwrap();
     std::fs::create_dir(dir.path().join("d")).unwrap();
-    let entries = list_dir_checked(&dir.path().to_string_lossy(), true, "name", "asc").expect("absolute path lists");
+    let entries = list_dir_checked(&dir.path().to_string_lossy(), true, "name", "asc")
+        .expect("absolute path lists");
     let mut names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
     names.sort();
     assert_eq!(names, ["a.txt", "d"]);
@@ -90,7 +114,12 @@ fn the_invalid_path_constructor_gives_code_invalid_path_and_a_message() {
 
 #[test]
 fn io_errors_never_map_to_invalid_path() {
-    for kind in [io::ErrorKind::InvalidInput, io::ErrorKind::InvalidData, io::ErrorKind::Other, io::ErrorKind::NotFound] {
+    for kind in [
+        io::ErrorKind::InvalidInput,
+        io::ErrorKind::InvalidData,
+        io::ErrorKind::Other,
+        io::ErrorKind::NotFound,
+    ] {
         let dto: FsListDirErrorDto = io::Error::new(kind, "x").into();
         assert_ne!(dto.code, "invalid_path", "{kind:?}");
     }

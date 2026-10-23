@@ -16,7 +16,9 @@ use std::path::PathBuf;
 use super::guarded::resolve_item_resolution;
 use super::preflight::TransferPreflightError;
 use super::test_support::*;
-use super::transfer::{copy_batch_with_item_resolutions, detect_conflicts, ConflictKind, ConflictResolution};
+use super::transfer::{
+    copy_batch_with_item_resolutions, detect_conflicts, ConflictKind, ConflictResolution,
+};
 
 fn conflict_names(items: &[PathBuf], destination: &std::path::Path) -> Vec<String> {
     detect_conflicts(items, destination)
@@ -59,15 +61,26 @@ fn no_conflicts_yields_an_empty_list() {
 #[test]
 fn r31_3_only_top_level_names_are_detected_not_files_inside_folders() {
     let root = tempdir();
-    let folder = write(root.path(), "src/d/inner.txt", "new").parent().unwrap().to_path_buf();
+    let folder = write(root.path(), "src/d/inner.txt", "new")
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let file = write(root.path(), "src/a.txt", "a");
     // dest has d/inner.txt (nested same name) and d itself, but no top-level a.txt
     write(root.path(), "dest/d/inner.txt", "old");
-    write(root.path(), "dest/other/a.txt", "nested a.txt must not count");
+    write(
+        root.path(),
+        "dest/other/a.txt",
+        "nested a.txt must not count",
+    );
 
     let names = conflict_names(&[file, folder], &root.path().join("dest"));
 
-    assert_eq!(names, vec!["d".to_string()], "only the top-level folder `d` conflicts, not inner.txt / other/a.txt");
+    assert_eq!(
+        names,
+        vec!["d".to_string()],
+        "only the top-level folder `d` conflicts, not inner.txt / other/a.txt"
+    );
 }
 
 // Order of the reported conflicts follows the order of `items`.
@@ -80,7 +93,10 @@ fn conflicts_keep_the_order_of_the_input_items() {
     write(root.path(), "dest/x.txt", "1");
     write(root.path(), "dest/z.txt", "1");
 
-    assert_eq!(conflict_names(&[z, y, x], &root.path().join("dest")), vec!["z.txt", "x.txt"]);
+    assert_eq!(
+        conflict_names(&[z, y, x], &root.path().join("dest")),
+        vec!["z.txt", "x.txt"]
+    );
 }
 
 // R-32-2 (Windows): the name comparison follows the OS (case-insensitive on
@@ -92,7 +108,10 @@ fn r32_name_conflict_follows_os_case_rules_on_windows() {
     let a = write(root.path(), "src/REPORT.TXT", "new");
     write(root.path(), "dest/report.txt", "old");
 
-    assert_eq!(conflict_names(&[a], &root.path().join("dest")), vec!["REPORT.TXT"]);
+    assert_eq!(
+        conflict_names(&[a], &root.path().join("dest")),
+        vec!["REPORT.TXT"]
+    );
 }
 
 // Detection has zero side effects (both trees unchanged).
@@ -123,7 +142,10 @@ fn destination_missing_or_not_a_directory_is_an_error_with_preflight_codes() {
         detect_conflicts(&[a.clone()], &root.path().join("missing")).unwrap_err(),
         TransferPreflightError::DestinationNotFound
     );
-    assert_eq!(detect_conflicts(&[a], &file_dest).unwrap_err(), TransferPreflightError::DestinationNotDir);
+    assert_eq!(
+        detect_conflicts(&[a], &file_dest).unwrap_err(),
+        TransferPreflightError::DestinationNotDir
+    );
 }
 
 // R-25 / AC-14: pasting into the item's own directory is the same item ->
@@ -156,12 +178,18 @@ fn ac79_same_directory_via_a_junction_is_not_a_conflict() {
     let root = tempdir();
     let a = write(root.path(), "real/a.txt", "a");
     let link = root.path().join("link");
-    assert!(make_dir_link(&link, &root.path().join("real")), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&link, &root.path().join("real")),
+        "test setup: could not create a directory link"
+    );
 
     let result = conflict_names(&[a], &link);
 
     remove_dir_link(&link);
-    assert!(result.is_empty(), "same entity via junction must not be reported: {result:?}");
+    assert!(
+        result.is_empty(),
+        "same entity via junction must not be reported: {result:?}"
+    );
 }
 
 // R-37-1 / AC-80: canonical (verbatim `\\?\`) and plain spellings of the
@@ -181,7 +209,10 @@ fn ac80_canonical_and_plain_spellings_of_the_same_directory_are_the_same_item() 
 #[test]
 fn ac81_source_beneath_the_conflicting_destination_item_is_overwrite_ancestor() {
     let root = tempdir();
-    let inner = write(root.path(), "X/foo/foo/leaf.txt", "leaf").parent().unwrap().to_path_buf(); // X/foo/foo (dir)
+    let inner = write(root.path(), "X/foo/foo/leaf.txt", "leaf")
+        .parent()
+        .unwrap()
+        .to_path_buf(); // X/foo/foo (dir)
 
     let conflicts = detect_conflicts(&[inner.clone()], &root.path().join("X")).expect("ok");
 
@@ -210,7 +241,10 @@ fn ac81_ancestor_detection_works_through_a_junction_alias_of_the_destination() {
     let root = tempdir();
     let inner = write(root.path(), "X/foo/foo", "file");
     let alias = root.path().join("alias_of_x");
-    assert!(make_dir_link(&alias, &root.path().join("X")), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&alias, &root.path().join("X")),
+        "test setup: could not create a directory link"
+    );
 
     let conflicts = detect_conflicts(&[inner], &alias).expect("ok");
 
@@ -224,7 +258,10 @@ fn ac81_ancestor_detection_works_through_a_junction_alias_of_the_destination() {
 // ------------------------------------------------------------------
 
 fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
 }
 
 // A per-item value wins over the batch default.
@@ -250,14 +287,22 @@ fn items_without_an_entry_use_the_default_resolution() {
         resolve_item_resolution("C:\\src\\other.txt", ConflictResolution::Reject, Some(&m)),
         ConflictResolution::Reject
     );
-    assert_eq!(resolve_item_resolution("C:\\src\\a.txt", ConflictResolution::Skip, None), ConflictResolution::Skip);
+    assert_eq!(
+        resolve_item_resolution("C:\\src\\a.txt", ConflictResolution::Skip, None),
+        ConflictResolution::Skip
+    );
 }
 
 // SHOULD-82: an unknown value is treated as `reject` (never as overwrite),
 // even when the default is more permissive.
 #[test]
 fn an_unknown_value_is_reject() {
-    let m = map(&[("a", "OVERWRITE"), ("b", "replace"), ("c", ""), ("d", "delete")]);
+    let m = map(&[
+        ("a", "OVERWRITE"),
+        ("b", "replace"),
+        ("c", ""),
+        ("d", "delete"),
+    ]);
     for key in ["a", "b", "c", "d"] {
         assert_eq!(
             resolve_item_resolution(key, ConflictResolution::Overwrite, Some(&m)),
@@ -272,7 +317,13 @@ fn an_unknown_value_is_reject() {
 #[test]
 fn keys_must_match_the_item_string_exactly() {
     let m = map(&[("C:\\src\\a.txt", "overwrite")]);
-    for near_miss in ["c:\\src\\a.txt", "C:\\src\\A.TXT", "C:/src/a.txt", "C:\\src\\a.txt\\", " C:\\src\\a.txt"] {
+    for near_miss in [
+        "c:\\src\\a.txt",
+        "C:\\src\\A.TXT",
+        "C:/src/a.txt",
+        "C:\\src\\a.txt\\",
+        " C:\\src\\a.txt",
+    ] {
         assert_eq!(
             resolve_item_resolution(near_miss, ConflictResolution::Reject, Some(&m)),
             ConflictResolution::Reject,
@@ -304,10 +355,17 @@ fn keys_that_are_not_items_are_ignored_by_the_batch() {
 
     assert_eq!(summary.total, 2);
     assert_eq!(summary.ok, 1, "a.txt overwritten");
-    assert_eq!(summary.failed, 1, "b.txt has no entry -> default reject -> conflict");
+    assert_eq!(
+        summary.failed, 1,
+        "b.txt has no entry -> default reject -> conflict"
+    );
     assert_eq!(summary.failures[0].code, "conflict");
     assert_eq!(read(&root.path().join("dest/a.txt")), "new-a");
-    assert_eq!(read(&root.path().join("dest/b.txt")), "old-b", "b.txt must not be silently overwritten (R-30-2)");
+    assert_eq!(
+        read(&root.path().join("dest/b.txt")),
+        "old-b",
+        "b.txt must not be silently overwritten (R-30-2)"
+    );
     assert!(!root.path().join("dest/not_an_item.txt").exists());
 }
 
@@ -324,8 +382,12 @@ fn per_item_resolutions_can_overwrite_one_item_and_skip_another() {
     per_item.insert(a.clone(), ConflictResolution::Overwrite);
     per_item.insert(b.clone(), ConflictResolution::Skip);
 
-    let summary =
-        copy_batch_with_item_resolutions(&[a, b], &root.path().join("dest"), ConflictResolution::Reject, &per_item);
+    let summary = copy_batch_with_item_resolutions(
+        &[a, b],
+        &root.path().join("dest"),
+        ConflictResolution::Reject,
+        &per_item,
+    );
 
     assert_eq!((summary.ok, summary.skipped, summary.failed), (1, 1, 0));
     assert_eq!(read(&root.path().join("dest/a.txt")), "new-a");

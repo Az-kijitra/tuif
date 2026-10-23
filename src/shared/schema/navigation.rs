@@ -64,7 +64,8 @@ mod tests {
     #[test]
     fn legacy_field_names_are_not_read() {
         let d: NavigationData =
-            toml::from_str("history_paths = [\"C:\\\\x\"]\nhistory_search = [\"q\"]").expect("parse");
+            toml::from_str("history_paths = [\"C:\\\\x\"]\nhistory_search = [\"q\"]")
+                .expect("parse");
         assert!(d.visit_history.is_empty());
         assert!(d.search_history.is_empty());
     }

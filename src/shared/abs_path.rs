@@ -17,12 +17,19 @@ fn is_drive_prefix(chars: &[char]) -> bool {
 
 /// `Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}`-shaped (braces around a GUID).
 fn is_volume_guid(component: &str) -> bool {
-    let Some(rest) = component.strip_prefix("Volume") else { return false };
-    let Some(inner) = rest.strip_prefix('{').and_then(|r| r.strip_suffix('}')) else { return false };
+    let Some(rest) = component.strip_prefix("Volume") else {
+        return false;
+    };
+    let Some(inner) = rest.strip_prefix('{').and_then(|r| r.strip_suffix('}')) else {
+        return false;
+    };
     let groups: Vec<&str> = inner.split('-').collect();
     let lens = [8usize, 4, 4, 4, 12];
     groups.len() == 5
-        && groups.iter().zip(lens).all(|(g, n)| g.len() == n && g.chars().all(|c| c.is_ascii_hexdigit()))
+        && groups
+            .iter()
+            .zip(lens)
+            .all(|(g, n)| g.len() == n && g.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// R-89-6 / SPEC-0300-0016 R-722-3: absolute-path forms only. Never converts.

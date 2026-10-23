@@ -41,8 +41,9 @@ pub const TEXT_EXTENSIONS: &[&str] = &[
     "txt", "log", "json", "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "rs", "js", "ts", "py",
 ];
 /// R-414: the OS-association direct list (10).
-pub const OS_OPEN_EXTENSIONS: &[&str] =
-    &["gif", "webp", "svg", "svgz", "ico", "tif", "tiff", "avif", "heic", "heif"];
+pub const OS_OPEN_EXTENSIONS: &[&str] = &[
+    "gif", "webp", "svg", "svgz", "ico", "tif", "tiff", "avif", "heic", "heif",
+];
 
 /// R-410-1: the text after the last dot, lowercased. A leading-dot-only name
 /// (`.gitignore`) and a name with no dot at all (`Makefile`) have no
@@ -93,7 +94,8 @@ fn is_control_byte(b: u8) -> bool {
 }
 
 fn matches_any(ext: &str, list: &[&str]) -> bool {
-    list.iter().any(|candidate| candidate.eq_ignore_ascii_case(ext))
+    list.iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(ext))
 }
 
 /// R-410: the combined decision, the ONE implementation shared by the filer's

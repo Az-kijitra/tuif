@@ -19,7 +19,10 @@ fn r387_2_cancel_before_register_is_kept_by_register() {
     let registry = CancelRegistry::default();
     registry.request_cancel("op-early");
     let flag = registry.register("op-early");
-    assert!(raised(&flag), "register must hand out the pre-recorded cancellation");
+    assert!(
+        raised(&flag),
+        "register must hand out the pre-recorded cancellation"
+    );
 }
 
 // R-387-2: a plain register starts un-canceled.
@@ -45,7 +48,10 @@ fn r387_2_register_keeps_and_shares_the_existing_flag() {
     let first = registry.register("op-a");
     let second = registry.register("op-a");
     registry.request_cancel("op-a");
-    assert!(raised(&first) && raised(&second), "both handles must observe the cancel");
+    assert!(
+        raised(&first) && raised(&second),
+        "both handles must observe the cancel"
+    );
 }
 
 // R-387-3 / AC-358-3: canceling one id never affects another.
@@ -79,7 +85,10 @@ fn unregister_removes_the_entry_so_a_reused_id_starts_fresh() {
     assert!(raised(&flag));
     registry.unregister("op-a");
     let again = registry.register("op-a");
-    assert!(!raised(&again), "stale cancellation must not leak into a new operation with the same id");
+    assert!(
+        !raised(&again),
+        "stale cancellation must not leak into a new operation with the same id"
+    );
 }
 
 #[test]
@@ -123,7 +132,10 @@ fn guard_registers_and_exposes_the_flag_and_keeps_an_early_cancel() {
     let registry = CancelRegistry::default();
     registry.request_cancel("op-g");
     let guard = CancelGuard::new(&registry, "op-g");
-    assert!(raised(guard.flag()), "an early cancel must be visible through the guard (R-387-2)");
+    assert!(
+        raised(guard.flag()),
+        "an early cancel must be visible through the guard (R-387-2)"
+    );
 }
 
 #[test]
@@ -135,7 +147,10 @@ fn guard_drop_unregisters_the_operation() {
         assert!(raised(guard.flag()));
     }
     let again = registry.register("op-g");
-    assert!(!raised(&again), "dropping the guard must remove the id's entry");
+    assert!(
+        !raised(&again),
+        "dropping the guard must remove the id's entry"
+    );
 }
 
 #[test]
@@ -147,5 +162,8 @@ fn guard_drop_unregisters_even_when_the_operation_panics() {
         panic!("simulated failure inside the operation");
     }));
     assert!(result.is_err());
-    assert!(!raised(&registry.register("op-panic")), "the guard must clean up during unwinding");
+    assert!(
+        !raised(&registry.register("op-panic")),
+        "the guard must clean up during unwinding"
+    );
 }

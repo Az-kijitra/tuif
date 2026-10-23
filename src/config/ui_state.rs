@@ -56,7 +56,12 @@ fn extract_bool(table: &toml::value::Table, key: &str, default: bool) -> bool {
     table.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
 }
 
-fn extract_known_str(table: &toml::value::Table, key: &str, known: &[&str], default: &str) -> String {
+fn extract_known_str(
+    table: &toml::value::Table,
+    key: &str,
+    known: &[&str],
+    default: &str,
+) -> String {
     match table.get(key).and_then(|v| v.as_str()) {
         Some(s) if known.contains(&s) => s.to_string(),
         _ => default.to_string(),
@@ -82,27 +87,39 @@ pub fn load(path: &Path) -> io::Result<UiStateLoadResult> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Ok(UiStateLoadResult { data: UiStateData::default(), recovered_from_corruption: false });
+            return Ok(UiStateLoadResult {
+                data: UiStateData::default(),
+                recovered_from_corruption: false,
+            });
         }
         Err(e) => return Err(e),
     };
 
-    let parsed = String::from_utf8(bytes).ok().and_then(|s| s.parse::<toml::Value>().ok());
+    let parsed = String::from_utf8(bytes)
+        .ok()
+        .and_then(|s| s.parse::<toml::Value>().ok());
     match parsed {
         Some(value) => {
             let table = value.as_table().cloned().unwrap_or_default();
-            Ok(UiStateLoadResult { data: extract_ui_state_data(&table), recovered_from_corruption: false })
+            Ok(UiStateLoadResult {
+                data: extract_ui_state_data(&table),
+                recovered_from_corruption: false,
+            })
         }
         None => {
             let backup_path = path.with_extension("toml.bak");
             fs::rename(path, &backup_path)?;
-            Ok(UiStateLoadResult { data: UiStateData::default(), recovered_from_corruption: true })
+            Ok(UiStateLoadResult {
+                data: UiStateData::default(),
+                recovered_from_corruption: true,
+            })
         }
     }
 }
 
 pub fn save(path: &Path, data: &UiStateData) -> io::Result<()> {
-    let serialized = toml::to_string_pretty(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let serialized =
+        toml::to_string_pretty(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     crate::config::atomic::atomic_write(path, &serialized)
 }
 
@@ -169,8 +186,14 @@ mod tests {
 
         assert_eq!(r.data, UiStateData::default());
         assert!(r.recovered_from_corruption);
-        assert_eq!(fs::read_to_string(dir.path().join("ui-state.toml.bak")).unwrap(), bad);
-        assert!(!path.exists(), "the corrupt original must no longer sit at the load path");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("ui-state.toml.bak")).unwrap(),
+            bad
+        );
+        assert!(
+            !path.exists(),
+            "the corrupt original must no longer sit at the load path"
+        );
     }
 
     // Non-UTF-8 bytes are structural corruption too (MUST-48(a) precedent).
@@ -185,7 +208,10 @@ mod tests {
 
         assert_eq!(r.data, UiStateData::default());
         assert!(r.recovered_from_corruption);
-        assert_eq!(fs::read(dir.path().join("ui-state.toml.bak")).unwrap(), bytes);
+        assert_eq!(
+            fs::read(dir.path().join("ui-state.toml.bak")).unwrap(),
+            bytes
+        );
     }
 
     // A genuine I/O error (not NotFound) must never be papered over as
@@ -210,7 +236,11 @@ mod tests {
         fs::write(bak.join("keep"), "x").unwrap(); // non-empty dir: rename cannot replace it
 
         assert!(load(&path).is_err());
-        assert_eq!(fs::read_to_string(&path).unwrap(), "garbage [[[", "original must be left intact");
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "garbage [[[",
+            "original must be left intact"
+        );
     }
 
     // AC-629 (iii): ONE field with the wrong TOML type falls back to just
@@ -228,7 +258,10 @@ mod tests {
 
         let r = load(&path).expect("load");
 
-        assert!(!r.recovered_from_corruption, "a single bad field is not a structural corruption");
+        assert!(
+            !r.recovered_from_corruption,
+            "a single bad field is not a structural corruption"
+        );
         assert_eq!(
             r.data,
             UiStateData {
@@ -292,6 +325,9 @@ mod tests {
         fs::write(&path, "newer [[[").unwrap();
         let r = load(&path).expect("load");
         assert!(r.recovered_from_corruption);
-        assert_eq!(fs::read_to_string(dir.path().join("ui-state.toml.bak")).unwrap(), "newer [[[");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("ui-state.toml.bak")).unwrap(),
+            "newer [[["
+        );
     }
 }

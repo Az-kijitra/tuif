@@ -18,8 +18,12 @@ pub fn app_config_dir() -> io::Result<PathBuf> {
     if let Some(dir) = config_dir_override()? {
         return Ok(dir);
     }
-    let appdata = std::env::var_os("APPDATA")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "APPDATA environment variable is not set"))?;
+    let appdata = std::env::var_os("APPDATA").ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "APPDATA environment variable is not set",
+        )
+    })?;
     let dir = PathBuf::from(appdata).join("tuif");
     fs::create_dir_all(&dir)?;
     Ok(dir)
@@ -67,7 +71,9 @@ impl From<ConfigDirOverrideError> for io::Error {
     }
 }
 
-pub fn resolve_config_dir_override(raw: Option<&OsStr>) -> Result<Option<PathBuf>, ConfigDirOverrideError> {
+pub fn resolve_config_dir_override(
+    raw: Option<&OsStr>,
+) -> Result<Option<PathBuf>, ConfigDirOverrideError> {
     let Some(raw) = raw else {
         return Ok(None);
     };
@@ -79,15 +85,20 @@ pub fn resolve_config_dir_override(raw: Option<&OsStr>) -> Result<Option<PathBuf
     }
     let path = PathBuf::from(text);
     if !path.is_absolute() {
-        return Err(ConfigDirOverrideError(format!("not an absolute path: {text}")));
+        return Err(ConfigDirOverrideError(format!(
+            "not an absolute path: {text}"
+        )));
     }
     if path.components().any(|c| matches!(c, Component::ParentDir)) {
-        return Err(ConfigDirOverrideError(format!("must not contain `..`: {text}")));
+        return Err(ConfigDirOverrideError(format!(
+            "must not contain `..`: {text}"
+        )));
     }
     if path.exists() && !path.is_dir() {
         return Err(ConfigDirOverrideError(format!("not a directory: {text}")));
     }
-    fs::create_dir_all(&path).map_err(|e| ConfigDirOverrideError(format!("cannot create {text}: {e}")))?;
+    fs::create_dir_all(&path)
+        .map_err(|e| ConfigDirOverrideError(format!("cannot create {text}: {e}")))?;
     Ok(Some(path))
 }
 

@@ -15,7 +15,11 @@ use super::path_rules::*;
 const REJECTED: ArchiveErrorCode = ArchiveErrorCode::ZipEntryRejected;
 
 fn rejected(name: &str) {
-    assert_eq!(validate_entry_name(name), Err(REJECTED), "expected {name:?} to be rejected");
+    assert_eq!(
+        validate_entry_name(name),
+        Err(REJECTED),
+        "expected {name:?} to be rejected"
+    );
 }
 
 fn components(name: &str) -> Vec<String> {
@@ -31,15 +35,27 @@ fn s(parts: &[&str]) -> Vec<String> {
 #[test]
 fn ordinary_names_are_accepted_and_split_into_components() {
     assert_eq!(components("a.txt"), s(&["a.txt"]));
-    assert_eq!(components("dir/sub/file.txt"), s(&["dir", "sub", "file.txt"]));
-    assert_eq!(components("日本語/ファイル.txt"), s(&["日本語", "ファイル.txt"]));
+    assert_eq!(
+        components("dir/sub/file.txt"),
+        s(&["dir", "sub", "file.txt"])
+    );
+    assert_eq!(
+        components("日本語/ファイル.txt"),
+        s(&["日本語", "ファイル.txt"])
+    );
 }
 
 // R-361: `\` is a separator exactly like `/`.
 #[test]
 fn r361_backslash_is_a_separator() {
-    assert_eq!(components(r"dir\sub\file.txt"), s(&["dir", "sub", "file.txt"]));
-    assert_eq!(components(r"dir/sub\file.txt"), s(&["dir", "sub", "file.txt"]));
+    assert_eq!(
+        components(r"dir\sub\file.txt"),
+        s(&["dir", "sub", "file.txt"])
+    );
+    assert_eq!(
+        components(r"dir/sub\file.txt"),
+        s(&["dir", "sub", "file.txt"])
+    );
 }
 
 // AC-366 / R-363 note: `.` components are ignored, not rejected.
@@ -66,15 +82,40 @@ fn directory_entries_with_a_trailing_slash_yield_the_same_components() {
 // Near-misses that must NOT be rejected (guards against over-blocking).
 #[test]
 fn names_that_only_look_like_reserved_names_are_accepted() {
-    for name in ["CONSOLE", "COM0", "COM10", "LPT0", "AUXILIARY.txt", "nul_x.txt", "communication.txt", "CONIN", "c.on"] {
-        assert!(validate_entry_name(name).is_ok(), "{name:?} must be accepted");
+    for name in [
+        "CONSOLE",
+        "COM0",
+        "COM10",
+        "LPT0",
+        "AUXILIARY.txt",
+        "nul_x.txt",
+        "communication.txt",
+        "CONIN",
+        "c.on",
+    ] {
+        assert!(
+            validate_entry_name(name).is_ok(),
+            "{name:?} must be accepted"
+        );
     }
 }
 
 #[test]
 fn unusual_but_legal_characters_are_accepted() {
-    for name in ["a b.txt", "a-b_c(1).txt", "#hash.txt", "a&b.txt", "a,b;c.txt", "sp ace/inner.txt", ".hidden", "a.b.c"] {
-        assert!(validate_entry_name(name).is_ok(), "{name:?} must be accepted");
+    for name in [
+        "a b.txt",
+        "a-b_c(1).txt",
+        "#hash.txt",
+        "a&b.txt",
+        "a,b;c.txt",
+        "sp ace/inner.txt",
+        ".hidden",
+        "a.b.c",
+    ] {
+        assert!(
+            validate_entry_name(name).is_ok(),
+            "{name:?} must be accepted"
+        );
     }
 }
 
@@ -83,7 +124,14 @@ fn unusual_but_legal_characters_are_accepted() {
 // R-363 #1 (+ R-361 for the backslash forms).
 #[test]
 fn ac363_parent_directory_components_are_rejected() {
-    for name in ["../evil.txt", "a/../../evil.txt", r"a\..\..\evil.txt", "..", "a/..", "a/../b"] {
+    for name in [
+        "../evil.txt",
+        "a/../../evil.txt",
+        r"a\..\..\evil.txt",
+        "..",
+        "a/..",
+        "a/../b",
+    ] {
         rejected(name);
     }
 }
@@ -91,7 +139,14 @@ fn ac363_parent_directory_components_are_rejected() {
 // R-363 #2: absolute / UNC / verbatim / device namespaces.
 #[test]
 fn ac363_absolute_paths_are_rejected() {
-    for name in ["/abs.txt", r"\\server\share\x.txt", "//server/share/x", r"\\?\C:\x", r"\\.\COM1", r"\abs.txt"] {
+    for name in [
+        "/abs.txt",
+        r"\\server\share\x.txt",
+        "//server/share/x",
+        r"\\?\C:\x",
+        r"\\.\COM1",
+        r"\abs.txt",
+    ] {
         rejected(name);
     }
 }
@@ -110,8 +165,22 @@ fn ac363_drive_specifications_are_rejected() {
 #[test]
 fn ac364_reserved_device_names_are_rejected() {
     for name in [
-        "CON", "nul.txt", "nul.tar.gz", "CON .txt", "dir/COM1.log", "LPT9", "CONIN$", "CONOUT$", "COM¹", "LPT³.txt",
-        "PRN", "aux", "Con", "COM9.x.y", "COM²", "LPT¹",
+        "CON",
+        "nul.txt",
+        "nul.tar.gz",
+        "CON .txt",
+        "dir/COM1.log",
+        "LPT9",
+        "CONIN$",
+        "CONOUT$",
+        "COM¹",
+        "LPT³.txt",
+        "PRN",
+        "aux",
+        "Con",
+        "COM9.x.y",
+        "COM²",
+        "LPT¹",
     ] {
         rejected(name);
     }
@@ -119,10 +188,27 @@ fn ac364_reserved_device_names_are_rejected() {
 
 #[test]
 fn r363_4_is_reserved_device_name_uses_the_part_before_the_first_dot_and_ignores_case() {
-    for name in ["CON", "con", "nul.tar.gz", "CON .txt", "COM1", "lpt9.log", "CONIN$", "CONOUT$.x", "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³"] {
+    for name in [
+        "CON",
+        "con",
+        "nul.tar.gz",
+        "CON .txt",
+        "COM1",
+        "lpt9.log",
+        "CONIN$",
+        "CONOUT$.x",
+        "COM¹",
+        "COM²",
+        "COM³",
+        "LPT¹",
+        "LPT²",
+        "LPT³",
+    ] {
         assert!(is_reserved_device_name(name), "{name:?}");
     }
-    for name in ["CONSOLE", "COM0", "COM10", "LPT0", "a.con", "xcon", "nul_x", "", "COM"] {
+    for name in [
+        "CONSOLE", "COM0", "COM10", "LPT0", "a.con", "xcon", "nul_x", "", "COM",
+    ] {
         assert!(!is_reserved_device_name(name), "{name:?}");
     }
 }
@@ -138,7 +224,9 @@ fn ac364_colon_and_alternate_data_streams_are_rejected() {
 // R-363 #6.
 #[test]
 fn ac364_trailing_dot_or_space_is_rejected() {
-    for name in ["name.", "name ", "dir /x", "dir./x", "a/b.", "a/b ", "...", ". "] {
+    for name in [
+        "name.", "name ", "dir /x", "dir./x", "a/b.", "a/b ", "...", ". ",
+    ] {
         rejected(name);
     }
 }
@@ -146,7 +234,9 @@ fn ac364_trailing_dot_or_space_is_rejected() {
 // R-363 #7.
 #[test]
 fn ac364_forbidden_characters_are_rejected() {
-    for name in ["a?b.txt", "a*b", "a<b", "a>b", "a\"b", "a|b", "a\u{0}b", "a\u{1f}b", "a\tb"] {
+    for name in [
+        "a?b.txt", "a*b", "a<b", "a>b", "a\"b", "a|b", "a\u{0}b", "a\u{1f}b", "a\tb",
+    ] {
         rejected(name);
     }
 }
@@ -239,9 +329,12 @@ fn should90_implied_parent_directories_are_limited_to_247() {
 #[test]
 fn r363_9_length_is_counted_in_utf16_units() {
     let dest = r"C:\x"; // 4
-    // each 😀 = 2 units: 4 + 1 + 127*2 = 259 accepted; 4 + 1 + 127*2 + 1 = 260 rejected
+                        // each 😀 = 2 units: 4 + 1 + 127*2 = 259 accepted; 4 + 1 + 127*2 + 1 = 260 rejected
     assert_eq!(check_path_lengths(dest, &["😀".repeat(127)], false), Ok(()));
-    assert_eq!(check_path_lengths(dest, &[format!("{}a", "😀".repeat(127))], false), Err(REJECTED));
+    assert_eq!(
+        check_path_lengths(dest, &[format!("{}a", "😀".repeat(127))], false),
+        Err(REJECTED)
+    );
 }
 
 // SHOULD-90: a `\\?\` prefix is NOT counted.
@@ -252,13 +345,19 @@ fn should90_verbatim_prefix_is_not_counted() {
     let comps = vec!["f".repeat(259 - plain.len() - 1)];
     assert_eq!(check_path_lengths(verbatim, &comps, false), Ok(()));
     let too_long = vec!["f".repeat(260 - plain.len() - 1)];
-    assert_eq!(check_path_lengths(verbatim, &too_long, false), Err(REJECTED));
+    assert_eq!(
+        check_path_lengths(verbatim, &too_long, false),
+        Err(REJECTED)
+    );
 }
 
 #[test]
 fn should90_strip_verbatim_prefix() {
     assert_eq!(strip_verbatim_prefix(r"\\?\C:\x\y"), r"C:\x\y");
-    assert_eq!(strip_verbatim_prefix(r"\\?\UNC\srv\share\x"), r"\\srv\share\x");
+    assert_eq!(
+        strip_verbatim_prefix(r"\\?\UNC\srv\share\x"),
+        r"\\srv\share\x"
+    );
     assert_eq!(strip_verbatim_prefix(r"C:\plain"), r"C:\plain");
     assert_eq!(strip_verbatim_prefix(r"\\srv\share"), r"\\srv\share");
 }
@@ -272,7 +371,10 @@ fn should90_unc_verbatim_destination_counts_as_a_plain_unc_path() {
     assert_eq!(check_path_lengths(plain, &comps, false), Ok(()));
     assert_eq!(check_path_lengths(verbatim, &comps, false), Ok(()));
     let too_long = vec!["f".repeat(260 - plain.len() - 1)];
-    assert_eq!(check_path_lengths(verbatim, &too_long, false), Err(REJECTED));
+    assert_eq!(
+        check_path_lengths(verbatim, &too_long, false),
+        Err(REJECTED)
+    );
 }
 
 // A destination that is a drive root (`C:\`) must not double the separator.
@@ -296,7 +398,9 @@ fn r363_11_has_unpaired_surrogate() {
     assert!(has_unpaired_surrogate(&[0xD83D, b'a' as u16])); // high not followed by low
     assert!(!has_unpaired_surrogate(&[0xD83D, 0xDE00])); // U+1F600
     assert!(!has_unpaired_surrogate(&[]));
-    assert!(!has_unpaired_surrogate(&"日本語 abc 😀".encode_utf16().collect::<Vec<_>>()));
+    assert!(!has_unpaired_surrogate(
+        &"日本語 abc 😀".encode_utf16().collect::<Vec<_>>()
+    ));
 }
 
 // R-325 last row / SHOULD-96 / AC-364-3 (create side): OS names.
@@ -313,7 +417,10 @@ fn should96_os_names_with_unpaired_surrogates_are_invalid_path() {
 
 #[test]
 fn os_names_that_are_valid_unicode_convert_unchanged() {
-    assert_eq!(os_name_to_utf8(std::ffi::OsStr::new("plain.txt")), Ok("plain.txt".to_string()));
+    assert_eq!(
+        os_name_to_utf8(std::ffi::OsStr::new("plain.txt")),
+        Ok("plain.txt".to_string())
+    );
 }
 
 // ------------------------------------------------------- R-364 fold key
@@ -322,15 +429,25 @@ fn os_names_that_are_valid_unicode_convert_unchanged() {
 #[test]
 fn r364_case_only_differences_share_a_fold_key() {
     assert_eq!(fold_key(&s(&["A.txt"])), fold_key(&s(&["a.txt"])));
-    assert_eq!(fold_key(&s(&["Dir", "x.TXT"])), fold_key(&s(&["dir", "X.txt"])));
+    assert_eq!(
+        fold_key(&s(&["Dir", "x.TXT"])),
+        fold_key(&s(&["dir", "X.txt"]))
+    );
     assert_eq!(fold_key(&s(&["Ärger"])), fold_key(&s(&["ärger"])));
-    assert_eq!(fold_key(&s(&["ファイル", "ａ.txt"])), fold_key(&s(&["ファイル", "Ａ.txt"]))); // full-width a/A
+    assert_eq!(
+        fold_key(&s(&["ファイル", "ａ.txt"])),
+        fold_key(&s(&["ファイル", "Ａ.txt"]))
+    ); // full-width a/A
 }
 
 #[test]
 fn r364_different_names_have_different_fold_keys() {
     assert_ne!(fold_key(&s(&["a.txt"])), fold_key(&s(&["b.txt"])));
-    assert_ne!(fold_key(&s(&["a", "b"])), fold_key(&s(&["ab"])), "component boundaries matter");
+    assert_ne!(
+        fold_key(&s(&["a", "b"])),
+        fold_key(&s(&["ab"])),
+        "component boundaries matter"
+    );
     assert_ne!(fold_key(&s(&["a", "b"])), fold_key(&s(&["a", "b", "c"])));
 }
 
@@ -339,15 +456,28 @@ fn r364_different_names_have_different_fold_keys() {
 #[test]
 fn r364_fold_is_a_simple_one_to_one_uppercase_without_normalization() {
     assert_ne!(fold_key(&s(&["ß"])), fold_key(&s(&["SS"])));
-    assert_ne!(fold_key(&s(&["\u{e9}"])), fold_key(&s(&["e\u{301}"])), "é (NFC) and e+U+0301 (NFD) stay distinct");
+    assert_ne!(
+        fold_key(&s(&["\u{e9}"])),
+        fold_key(&s(&["e\u{301}"])),
+        "é (NFC) and e+U+0301 (NFD) stay distinct"
+    );
 }
 
 // SHOULD-91: `.` and empty components do not affect the key (they are dropped
 // by `validate_entry_name`), so all these spell one entry.
 #[test]
 fn should91_spelling_variants_of_one_path_share_one_key() {
-    let keys: Vec<String> =
-        ["a/b.txt", "a//b.txt", "a/./b.txt", "./a/b.txt", r"a\b.txt", "A/B.TXT"].iter().map(|n| fold_key(&components(n))).collect();
+    let keys: Vec<String> = [
+        "a/b.txt",
+        "a//b.txt",
+        "a/./b.txt",
+        "./a/b.txt",
+        r"a\b.txt",
+        "A/B.TXT",
+    ]
+    .iter()
+    .map(|n| fold_key(&components(n)))
+    .collect();
     assert!(keys.windows(2).all(|w| w[0] == w[1]), "{keys:?}");
 }
 
@@ -357,7 +487,13 @@ fn should91_spelling_variants_of_one_path_share_one_key() {
 fn r324_output_file_name_rules() {
     assert_eq!(validate_output_file_name("out.zip"), Ok(()));
     assert_eq!(validate_output_file_name("日本語 (1).zip"), Ok(()));
-    for bad in ["", "   ", ".", "..", "a?.zip", "a*b", "a:b", "a\"b", "a<b", "a>b", "a|b", "a/b", r"a\b"] {
-        assert_eq!(validate_output_file_name(bad), Err(ArchiveErrorCode::InvalidName), "{bad:?}");
+    for bad in [
+        "", "   ", ".", "..", "a?.zip", "a*b", "a:b", "a\"b", "a<b", "a>b", "a|b", "a/b", r"a\b",
+    ] {
+        assert_eq!(
+            validate_output_file_name(bad),
+            Err(ArchiveErrorCode::InvalidName),
+            "{bad:?}"
+        );
     }
 }

@@ -188,14 +188,25 @@ pub struct FileClipboard {
 pub enum InputPromptKind {
     PathBar,
     Search,
-    Rename { target: PathBuf },
-    RenameRemote { target: String },
+    Rename {
+        target: PathBuf,
+    },
+    RenameRemote {
+        target: String,
+    },
     NewFile,
     NewFolder,
     ZipCreate,
-    ZipExtract { zip_path: PathBuf },
-    ConfirmDelete { permanent: bool, targets: Vec<PathBuf> },
-    ConfirmDeleteRemote { targets: Vec<String> },
+    ZipExtract {
+        zip_path: PathBuf,
+    },
+    ConfirmDelete {
+        permanent: bool,
+        targets: Vec<PathBuf>,
+    },
+    ConfirmDeleteRemote {
+        targets: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -505,17 +516,13 @@ impl AppState {
         if let Some(cached) = self.tree_children_cache.get(&key) {
             return cached.clone();
         }
-        let children: Vec<(String, PathBuf)> = query::fs_list_dir(
-            dir,
-            self.ui_state.ui_show_hidden,
-            "name",
-            "asc",
-        )
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|e| e.entry_type == EntryType::Dir)
-        .map(|e| (e.name, e.path))
-        .collect();
+        let children: Vec<(String, PathBuf)> =
+            query::fs_list_dir(dir, self.ui_state.ui_show_hidden, "name", "asc")
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|e| e.entry_type == EntryType::Dir)
+                .map(|e| (e.name, e.path))
+                .collect();
         self.tree_children_cache.insert(key, children.clone());
         children
     }
@@ -644,9 +651,7 @@ impl AppState {
                                     os_name.to_string_lossy().into_owned(),
                                     anc.to_path_buf(),
                                 ));
-                                children.sort_by(|a, b| {
-                                    a.0.to_lowercase().cmp(&b.0.to_lowercase())
-                                });
+                                children.sort_by_key(|a| a.0.to_lowercase());
                             }
                         }
                     }
@@ -694,7 +699,11 @@ impl AppState {
     pub fn sync_tree_cursor_to_current_dir(&mut self) {
         if let (Some(session), Some(rdir)) = (&self.remote_session, &self.remote_dir) {
             let target_key = format!("remote:{}:{rdir}", session.profile.id);
-            if let Some(idx) = self.tree_nodes.iter().position(|n| tree_node_key(n) == target_key) {
+            if let Some(idx) = self
+                .tree_nodes
+                .iter()
+                .position(|n| tree_node_key(n) == target_key)
+            {
                 self.tree_cursor = idx;
             }
         } else {
@@ -824,7 +833,11 @@ impl AppState {
         match pending.authenticate(password) {
             Ok(session) => {
                 if save_pw {
-                    let _ = credential::save_password(&profile.credential_target(), &profile.user, password);
+                    let _ = credential::save_password(
+                        &profile.credential_target(),
+                        &profile.user,
+                        password,
+                    );
                 }
                 if let Some(p) = self.remote_profiles.iter_mut().find(|p| p.id == profile.id) {
                     p.save_password = save_pw;
@@ -876,7 +889,10 @@ impl AppState {
         if self.search_query.is_empty() {
             self.visible_indices = (0..self.entries.len()).collect();
         } else if self.search_regex {
-            match RegexBuilder::new(&self.search_query).case_insensitive(true).build() {
+            match RegexBuilder::new(&self.search_query)
+                .case_insensitive(true)
+                .build()
+            {
                 Ok(re) => {
                     self.visible_indices = self
                         .entries
@@ -1134,7 +1150,9 @@ impl AppState {
 
     fn record_visit(&mut self) {
         let p = self.current_dir.to_string_lossy().into_owned();
-        self.nav_data.visit_history.retain(|x| !x.eq_ignore_ascii_case(&p));
+        self.nav_data
+            .visit_history
+            .retain(|x| !x.eq_ignore_ascii_case(&p));
         self.nav_data.visit_history.insert(0, p);
         if self.nav_data.visit_history.len() > 50 {
             self.nav_data.visit_history.truncate(50);
@@ -1159,7 +1177,11 @@ impl AppState {
             if let Some(prompt) = transfer.conflict_prompt.as_mut() {
                 let choice = match ev.code {
                     KeyCode::Left | KeyCode::BackTab => {
-                        prompt.cursor = if prompt.cursor == 0 { 4 } else { prompt.cursor - 1 };
+                        prompt.cursor = if prompt.cursor == 0 {
+                            4
+                        } else {
+                            prompt.cursor - 1
+                        };
                         None
                     }
                     KeyCode::Right | KeyCode::Tab => {
@@ -1170,7 +1192,9 @@ impl AppState {
                     KeyCode::Char('s') | KeyCode::Char('S') => Some(ConflictChoice::Skip),
                     KeyCode::Char('a') | KeyCode::Char('A') => Some(ConflictChoice::OverwriteAll),
                     KeyCode::Char('k') | KeyCode::Char('K') => Some(ConflictChoice::SkipAll),
-                    KeyCode::Char('c') | KeyCode::Char('C') | KeyCode::Esc => Some(ConflictChoice::Cancel),
+                    KeyCode::Char('c') | KeyCode::Char('C') | KeyCode::Esc => {
+                        Some(ConflictChoice::Cancel)
+                    }
                     KeyCode::Enter => match prompt.cursor {
                         0 => Some(ConflictChoice::Overwrite),
                         1 => Some(ConflictChoice::Skip),
@@ -1218,7 +1242,10 @@ impl AppState {
 
         // Menu bar activation: F10 or Alt+F/E/V/G (without Ctrl)
         if ev.code == KeyCode::F(10) {
-            self.overlay = OverlayMode::MenuBar { cat_idx: 0, item_idx: 0 };
+            self.overlay = OverlayMode::MenuBar {
+                cat_idx: 0,
+                item_idx: 0,
+            };
             return;
         }
         if ev.modifiers == KeyModifiers::ALT {
@@ -1231,7 +1258,10 @@ impl AppState {
                     _ => None,
                 };
                 if let Some(cat_idx) = cat {
-                    self.overlay = OverlayMode::MenuBar { cat_idx, item_idx: 0 };
+                    self.overlay = OverlayMode::MenuBar {
+                        cat_idx,
+                        item_idx: 0,
+                    };
                     return;
                 }
             }
@@ -1273,7 +1303,8 @@ impl AppState {
                         self.tree_cursor = (self.tree_cursor + 1).min(self.tree_nodes.len() - 1);
                     }
                 } else if !self.visible_indices.is_empty() {
-                    self.focused_vis_idx = (self.focused_vis_idx + 1).min(self.visible_indices.len() - 1);
+                    self.focused_vis_idx =
+                        (self.focused_vis_idx + 1).min(self.visible_indices.len() - 1);
                 }
             }
             ActionId::MoveLeft => {
@@ -1352,7 +1383,8 @@ impl AppState {
                         self.tree_cursor = (self.tree_cursor + rows).min(self.tree_nodes.len() - 1);
                     }
                 } else if !self.visible_indices.is_empty() {
-                    self.focused_vis_idx = (self.focused_vis_idx + rows).min(self.visible_indices.len() - 1);
+                    self.focused_vis_idx =
+                        (self.focused_vis_idx + rows).min(self.visible_indices.len() - 1);
                 }
             }
             ActionId::SelectToggle => {
@@ -1465,7 +1497,11 @@ impl AppState {
                 self.reload_dir();
                 self.status_message = format!(
                     "Hidden files: {}",
-                    if self.ui_state.ui_show_hidden { "ON" } else { "OFF" }
+                    if self.ui_state.ui_show_hidden {
+                        "ON"
+                    } else {
+                        "OFF"
+                    }
                 );
             }
             ActionId::ToggleTree => {
@@ -1586,7 +1622,8 @@ impl AppState {
                             );
                         }
                     } else if !local_targets.is_empty() {
-                        let permanent = action == ActionId::DeletePermanent || !self.general.delete_to_trash;
+                        let permanent =
+                            action == ActionId::DeletePermanent || !self.general.delete_to_trash;
                         let summary = if permanent {
                             delete::delete_permanently(&local_targets)
                         } else {
@@ -1615,7 +1652,8 @@ impl AppState {
                         buffer: String::new(),
                     };
                 } else if !local_targets.is_empty() {
-                    let permanent = action == ActionId::DeletePermanent || !self.general.delete_to_trash;
+                    let permanent =
+                        action == ActionId::DeletePermanent || !self.general.delete_to_trash;
                     let title = if permanent {
                         format!(
                             "Permanently delete {} item(s)? (y/Enter:Confirm / Esc:Cancel)",
@@ -1643,7 +1681,8 @@ impl AppState {
                         if let Some(RemoteNodeInfo::Directory { path, .. }) = node.remote {
                             self.overlay = OverlayMode::Input {
                                 kind: InputPromptKind::RenameRemote { target: path },
-                                title: "Rename Remote Folder (Enter:Apply / Esc:Cancel)".to_string(),
+                                title: "Rename Remote Folder (Enter:Apply / Esc:Cancel)"
+                                    .to_string(),
                                 buffer: node.name,
                             };
                         } else if node.remote.is_none() {
@@ -1688,7 +1727,8 @@ impl AppState {
             ActionId::Search => {
                 self.overlay = OverlayMode::Input {
                     kind: InputPromptKind::Search,
-                    title: "Search Filter (Ctrl+R:Toggle Regex / Enter:Keep / Esc:Clear)".to_string(),
+                    title: "Search Filter (Ctrl+R:Toggle Regex / Enter:Keep / Esc:Clear)"
+                        .to_string(),
                     buffer: self.search_query.clone(),
                 };
             }
@@ -1697,7 +1737,8 @@ impl AppState {
             }
             ActionId::History => {
                 self.overlay = OverlayMode::ListPopup {
-                    title: "Visit History (j/k:Select / Enter:Go / d:Remove / Esc:Close)".to_string(),
+                    title: "Visit History (j/k:Select / Enter:Go / d:Remove / Esc:Close)"
+                        .to_string(),
                     items: self.nav_data.visit_history.clone(),
                     cursor: 0,
                     is_jump_list: false,
@@ -1713,7 +1754,9 @@ impl AppState {
             }
             ActionId::JumpAdd => {
                 let p = self.active_target_dir().to_string_lossy().into_owned();
-                self.nav_data.jump_list.retain(|x| !x.eq_ignore_ascii_case(&p));
+                self.nav_data
+                    .jump_list
+                    .retain(|x| !x.eq_ignore_ascii_case(&p));
                 self.nav_data.jump_list.insert(0, p.clone());
                 self.save_navigation();
                 self.status_message = format!("Added to Jump List: {p}");
@@ -1758,7 +1801,9 @@ impl AppState {
                     .unwrap_or("extracted")
                     .to_string();
                 self.overlay = OverlayMode::Input {
-                    kind: InputPromptKind::ZipExtract { zip_path: entry.path },
+                    kind: InputPromptKind::ZipExtract {
+                        zip_path: entry.path,
+                    },
                     title: "Extract Destination Folder (Enter:Extract / Esc:Cancel)".to_string(),
                     buffer: stem,
                 };
@@ -1795,7 +1840,10 @@ impl AppState {
                 Ok(TransferMessage::Progress(state)) => {
                     transfer.current_state = state;
                 }
-                Ok(TransferMessage::ConflictPrompt { file_name, reply_tx }) => {
+                Ok(TransferMessage::ConflictPrompt {
+                    file_name,
+                    reply_tx,
+                }) => {
                     transfer.conflict_prompt = Some(ConflictPromptData {
                         file_name,
                         reply_tx,
@@ -1832,9 +1880,8 @@ impl AppState {
             } else if let Some(err) = error_msg {
                 self.status_message = format!("Transfer error: {err}");
             } else {
-                self.status_message = format!(
-                    "Transfer complete: {succeeded} succeeded / {failed} failed"
-                );
+                self.status_message =
+                    format!("Transfer complete: {succeeded} succeeded / {failed} failed");
             }
             if is_cut && !cancelled && failed == 0 {
                 self.clipboard = None;
@@ -1896,7 +1943,11 @@ impl AppState {
                         }
 
                         let _ = tx.send(TransferMessage::Progress(TransferProgressState {
-                            title: if is_cut { "Moving files...".to_string() } else { "Copying files...".to_string() },
+                            title: if is_cut {
+                                "Moving files...".to_string()
+                            } else {
+                                "Copying files...".to_string()
+                            },
                             current_file: String::new(),
                             current_file_bytes: 0,
                             current_file_total: 0,
@@ -1938,20 +1989,26 @@ impl AppState {
 
                         let cancel_check = || cancel_clone.load(Ordering::Relaxed);
                         let tx_for_event = tx.clone();
-                        let title_str = if is_cut { "Moving files...".to_string() } else { "Copying files...".to_string() };
+                        let title_str = if is_cut {
+                            "Moving files...".to_string()
+                        } else {
+                            "Copying files...".to_string()
+                        };
                         let on_event = move |ev: transfer::ProgressEvent| {
                             if ev.kind == transfer::ProgressEventKind::Start {
-                                let _ = tx_for_event.send(TransferMessage::Progress(TransferProgressState {
-                                    title: title_str.clone(),
-                                    current_file: ev.name,
-                                    current_file_bytes: 0,
-                                    current_file_total: 0,
-                                    total_bytes_transferred: 0,
-                                    total_bytes,
-                                    files_transferred: ev.index.saturating_sub(1) as usize,
-                                    total_files,
-                                    is_cancelling: cancel_check(),
-                                }));
+                                let _ = tx_for_event.send(TransferMessage::Progress(
+                                    TransferProgressState {
+                                        title: title_str.clone(),
+                                        current_file: ev.name,
+                                        current_file_bytes: 0,
+                                        current_file_total: 0,
+                                        total_bytes_transferred: 0,
+                                        total_bytes,
+                                        files_transferred: ev.index.saturating_sub(1) as usize,
+                                        total_files,
+                                        is_cancelling: cancel_check(),
+                                    },
+                                ));
                             }
                         };
 
@@ -1986,7 +2043,11 @@ impl AppState {
                         cancel_flag,
                         rx,
                         current_state: TransferProgressState {
-                            title: if clip.mode == ClipMode::Cut { "Moving files...".to_string() } else { "Copying files...".to_string() },
+                            title: if clip.mode == ClipMode::Cut {
+                                "Moving files...".to_string()
+                            } else {
+                                "Copying files...".to_string()
+                            },
                             current_file: String::new(),
                             current_file_bytes: 0,
                             current_file_total: 0,
@@ -2008,7 +2069,8 @@ impl AppState {
                     .filter(|s| remote_downloads.iter().all(|(pid, _)| &s.profile.id == pid))
                     .cloned()
                 else {
-                    self.status_message = "Active remote session does not match download items".to_string();
+                    self.status_message =
+                        "Active remote session does not match download items".to_string();
                     return;
                 };
 
@@ -2033,7 +2095,9 @@ impl AppState {
                             });
                             return;
                         }
-                        if let Ok((f_count, b_count)) = session.calc_remote_size(rpath, &cancel_clone) {
+                        if let Ok((f_count, b_count)) =
+                            session.calc_remote_size(rpath, &cancel_clone)
+                        {
                             total_files += f_count;
                             total_bytes += b_count;
                         }
@@ -2075,17 +2139,20 @@ impl AppState {
                             &local_target,
                             cancel_ref,
                             |p| {
-                                let _ = tx_clone.send(TransferMessage::Progress(TransferProgressState {
-                                    title: "Downloading from Remote...".to_string(),
-                                    current_file: p.file_name.clone(),
-                                    current_file_bytes: p.file_bytes_transferred,
-                                    current_file_total: p.file_total_bytes,
-                                    total_bytes_transferred: base_bytes + p.total_bytes_transferred,
-                                    total_bytes,
-                                    files_transferred: base_files + p.completed_files,
-                                    total_files,
-                                    is_cancelling: cancel_ref.load(Ordering::Relaxed),
-                                }));
+                                let _ = tx_clone.send(TransferMessage::Progress(
+                                    TransferProgressState {
+                                        title: "Downloading from Remote...".to_string(),
+                                        current_file: p.file_name.clone(),
+                                        current_file_bytes: p.file_bytes_transferred,
+                                        current_file_total: p.file_total_bytes,
+                                        total_bytes_transferred: base_bytes
+                                            + p.total_bytes_transferred,
+                                        total_bytes,
+                                        files_transferred: base_files + p.completed_files,
+                                        total_files,
+                                        is_cancelling: cancel_ref.load(Ordering::Relaxed),
+                                    },
+                                ));
                             },
                             |f| resolve_conflict(&policy, f, &tx_clone),
                         );
@@ -2174,9 +2241,8 @@ impl AppState {
                         self.clipboard = None;
                     }
                     self.reload_dir();
-                    self.status_message = format!(
-                        "Remote paste complete: {succeeded} succeeded / {failed} failed"
-                    );
+                    self.status_message =
+                        format!("Remote paste complete: {succeeded} succeeded / {failed} failed");
                     return;
                 }
 
@@ -2210,7 +2276,9 @@ impl AppState {
                                 total_bytes += b_count;
                             }
                             ClipboardItem::Remote { path: src_path, .. } => {
-                                if let Ok((f_count, b_count)) = session.calc_remote_size(src_path, &cancel_clone) {
+                                if let Ok((f_count, b_count)) =
+                                    session.calc_remote_size(src_path, &cancel_clone)
+                                {
                                     total_files += f_count;
                                     total_bytes += b_count;
                                 }
@@ -2260,17 +2328,20 @@ impl AppState {
                                     &rtarget,
                                     cancel_ref,
                                     |p| {
-                                        let _ = tx_clone.send(TransferMessage::Progress(TransferProgressState {
-                                            title: "Uploading to Remote...".to_string(),
-                                            current_file: p.file_name.clone(),
-                                            current_file_bytes: p.file_bytes_transferred,
-                                            current_file_total: p.file_total_bytes,
-                                            total_bytes_transferred: base_bytes + p.total_bytes_transferred,
-                                            total_bytes,
-                                            files_transferred: base_files + p.completed_files,
-                                            total_files,
-                                            is_cancelling: cancel_ref.load(Ordering::Relaxed),
-                                        }));
+                                        let _ = tx_clone.send(TransferMessage::Progress(
+                                            TransferProgressState {
+                                                title: "Uploading to Remote...".to_string(),
+                                                current_file: p.file_name.clone(),
+                                                current_file_bytes: p.file_bytes_transferred,
+                                                current_file_total: p.file_total_bytes,
+                                                total_bytes_transferred: base_bytes
+                                                    + p.total_bytes_transferred,
+                                                total_bytes,
+                                                files_transferred: base_files + p.completed_files,
+                                                total_files,
+                                                is_cancelling: cancel_ref.load(Ordering::Relaxed),
+                                            },
+                                        ));
                                     },
                                     |f| resolve_conflict(&policy, f, &tx_clone),
                                 );
@@ -2306,7 +2377,8 @@ impl AppState {
                                     let rtarget = rpath::join(&target_dir, &fname);
                                     let temp_dir = std::env::temp_dir().join("tuif-copy");
                                     let _ = std::fs::create_dir_all(&temp_dir);
-                                    let temp_path = temp_dir.join(session::sanitize_windows_name(&fname));
+                                    let temp_path =
+                                        temp_dir.join(session::sanitize_windows_name(&fname));
                                     let cancel_ref = &cancel_clone;
                                     let tx_clone = tx.clone();
                                     let base_bytes = total_transferred;
@@ -2317,17 +2389,23 @@ impl AppState {
                                         &temp_path,
                                         cancel_ref,
                                         |p| {
-                                            let _ = tx_clone.send(TransferMessage::Progress(TransferProgressState {
-                                                title: "Copying Remote File (Downloading)...".to_string(),
-                                                current_file: p.file_name.clone(),
-                                                current_file_bytes: p.file_bytes_transferred,
-                                                current_file_total: p.file_total_bytes,
-                                                total_bytes_transferred: base_bytes + (p.total_bytes_transferred / 2),
-                                                total_bytes,
-                                                files_transferred: base_files + (p.completed_files / 2),
-                                                total_files,
-                                                is_cancelling: cancel_ref.load(Ordering::Relaxed),
-                                            }));
+                                            let _ = tx_clone.send(TransferMessage::Progress(
+                                                TransferProgressState {
+                                                    title: "Copying Remote File (Downloading)..."
+                                                        .to_string(),
+                                                    current_file: p.file_name.clone(),
+                                                    current_file_bytes: p.file_bytes_transferred,
+                                                    current_file_total: p.file_total_bytes,
+                                                    total_bytes_transferred: base_bytes
+                                                        + (p.total_bytes_transferred / 2),
+                                                    total_bytes,
+                                                    files_transferred: base_files
+                                                        + (p.completed_files / 2),
+                                                    total_files,
+                                                    is_cancelling: cancel_ref
+                                                        .load(Ordering::Relaxed),
+                                                },
+                                            ));
                                         },
                                         |_| ConflictChoice::Overwrite,
                                     );
@@ -2338,17 +2416,24 @@ impl AppState {
                                             &rtarget,
                                             cancel_ref,
                                             |p| {
-                                                let _ = tx_clone.send(TransferMessage::Progress(TransferProgressState {
-                                                    title: "Copying Remote File (Uploading)...".to_string(),
-                                                    current_file: p.file_name.clone(),
-                                                    current_file_bytes: p.file_bytes_transferred,
-                                                    current_file_total: p.file_total_bytes,
-                                                    total_bytes_transferred: base_bytes + (p.total_bytes_transferred / 2),
-                                                    total_bytes,
-                                                    files_transferred: base_files + p.completed_files,
-                                                    total_files,
-                                                    is_cancelling: cancel_ref.load(Ordering::Relaxed),
-                                                }));
+                                                let _ = tx_clone.send(TransferMessage::Progress(
+                                                    TransferProgressState {
+                                                        title: "Copying Remote File (Uploading)..."
+                                                            .to_string(),
+                                                        current_file: p.file_name.clone(),
+                                                        current_file_bytes: p
+                                                            .file_bytes_transferred,
+                                                        current_file_total: p.file_total_bytes,
+                                                        total_bytes_transferred: base_bytes
+                                                            + (p.total_bytes_transferred / 2),
+                                                        total_bytes,
+                                                        files_transferred: base_files
+                                                            + p.completed_files,
+                                                        total_files,
+                                                        is_cancelling: cancel_ref
+                                                            .load(Ordering::Relaxed),
+                                                    },
+                                                ));
                                             },
                                             |f| resolve_conflict(&policy, f, &tx_clone),
                                         );
@@ -2415,7 +2500,11 @@ impl AppState {
                 LaunchTarget::from_current_dir(&self.current_dir)
             }
         } else if let Some(entry) = self.focused_entry() {
-            LaunchTarget::from_entry(&entry.path, entry.entry_type == EntryType::Dir, &self.current_dir)
+            LaunchTarget::from_entry(
+                &entry.path,
+                entry.entry_type == EntryType::Dir,
+                &self.current_dir,
+            )
         } else {
             LaunchTarget::from_current_dir(&self.current_dir)
         };
@@ -2519,41 +2608,47 @@ impl AppState {
         }
         let kind = classify::decide_kind(ext.as_deref(), &sample);
         match kind {
-            classify::ViewerKind::Text | classify::ViewerKind::Markdown => match text::read_text(path) {
-                Ok(payload) => {
-                    let is_markdown = kind == classify::ViewerKind::Markdown;
-                    let raw_lines = crate::viewer::highlight::highlight_with_bat(path, &payload.content);
-                    let preview_lines = if is_markdown {
-                        let width = self.term_width.saturating_sub(6).max(40) as usize;
-                        crate::viewer::highlight::render_markdown_with_leaf(&payload.content, width)
-                    } else {
-                        None
-                    };
-                    let preview_mode = preview_lines.is_some();
-                    let title = path
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Viewer")
-                        .to_string();
-                    self.overlay = OverlayMode::Viewer {
-                        path: path.to_path_buf(),
-                        title,
-                        is_markdown,
-                        preview_mode,
-                        raw_lines,
-                        preview_lines,
-                        scroll_y: 0,
-                        scroll_x: 0,
-                        search_query: None,
-                        search_input: None,
-                        matching_lines: Vec::new(),
-                        match_cursor: None,
-                    };
+            classify::ViewerKind::Text | classify::ViewerKind::Markdown => {
+                match text::read_text(path) {
+                    Ok(payload) => {
+                        let is_markdown = kind == classify::ViewerKind::Markdown;
+                        let raw_lines =
+                            crate::viewer::highlight::highlight_with_bat(path, &payload.content);
+                        let preview_lines = if is_markdown {
+                            let width = self.term_width.saturating_sub(6).max(40) as usize;
+                            crate::viewer::highlight::render_markdown_with_leaf(
+                                &payload.content,
+                                width,
+                            )
+                        } else {
+                            None
+                        };
+                        let preview_mode = preview_lines.is_some();
+                        let title = path
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("Viewer")
+                            .to_string();
+                        self.overlay = OverlayMode::Viewer {
+                            path: path.to_path_buf(),
+                            title,
+                            is_markdown,
+                            preview_mode,
+                            raw_lines,
+                            preview_lines,
+                            scroll_y: 0,
+                            scroll_x: 0,
+                            search_query: None,
+                            search_input: None,
+                            matching_lines: Vec::new(),
+                            match_cursor: None,
+                        };
+                    }
+                    Err(e) => {
+                        self.status_message = format!("Cannot open in viewer: {e}");
+                    }
                 }
-                Err(e) => {
-                    self.status_message = format!("Cannot open in viewer: {e}");
-                }
-            },
+            }
             classify::ViewerKind::Image => {
                 self.status_message = "Image preview is not supported in TUI viewer".to_string();
             }
@@ -2641,20 +2736,38 @@ impl AppState {
                             self.search_query = buffer.clone();
                             self.apply_filter();
                         }
-                        self.overlay = OverlayMode::Input { kind, title, buffer };
+                        self.overlay = OverlayMode::Input {
+                            kind,
+                            title,
+                            buffer,
+                        };
                     }
-                    KeyCode::Char('r') if ev.modifiers.contains(KeyModifiers::CONTROL) && kind == InputPromptKind::Search => {
+                    KeyCode::Char('r')
+                        if ev.modifiers.contains(KeyModifiers::CONTROL)
+                            && kind == InputPromptKind::Search =>
+                    {
                         self.search_regex = !self.search_regex;
                         self.apply_filter();
-                        self.overlay = OverlayMode::Input { kind, title, buffer };
+                        self.overlay = OverlayMode::Input {
+                            kind,
+                            title,
+                            buffer,
+                        };
                     }
-                    KeyCode::Char(c) if !ev.modifiers.contains(KeyModifiers::CONTROL) && !ev.modifiers.contains(KeyModifiers::ALT) => {
+                    KeyCode::Char(c)
+                        if !ev.modifiers.contains(KeyModifiers::CONTROL)
+                            && !ev.modifiers.contains(KeyModifiers::ALT) =>
+                    {
                         buffer.push(c);
                         if kind == InputPromptKind::Search {
                             self.search_query = buffer.clone();
                             self.apply_filter();
                         }
-                        self.overlay = OverlayMode::Input { kind, title, buffer };
+                        self.overlay = OverlayMode::Input {
+                            kind,
+                            title,
+                            buffer,
+                        };
                     }
                     _ => {}
                 }
@@ -2833,13 +2946,19 @@ impl AppState {
                                 matching_lines.clear();
                                 match_cursor = None;
                             } else {
-                                matching_lines = crate::viewer::highlight::find_matching_lines(active_lines, &query);
+                                matching_lines = crate::viewer::highlight::find_matching_lines(
+                                    active_lines,
+                                    &query,
+                                );
                                 search_query = Some(query.clone());
                                 if matching_lines.is_empty() {
                                     match_cursor = None;
                                     self.status_message = format!("Pattern not found: {query}");
                                 } else {
-                                    let next_pos = matching_lines.iter().position(|&l| l >= scroll_y).unwrap_or(0);
+                                    let next_pos = matching_lines
+                                        .iter()
+                                        .position(|&l| l >= scroll_y)
+                                        .unwrap_or(0);
                                     scroll_y = matching_lines[next_pos];
                                     match_cursor = Some(next_pos);
                                 }
@@ -2899,7 +3018,10 @@ impl AppState {
                         }
                     }
                     KeyCode::Char('q') => self.overlay = OverlayMode::None,
-                    KeyCode::Char('/') | KeyCode::Char('f') if ev.code == KeyCode::Char('/') || ev.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('/') | KeyCode::Char('f')
+                        if ev.code == KeyCode::Char('/')
+                            || ev.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
                         search_input = Some(search_query.clone().unwrap_or_default());
                         self.overlay = OverlayMode::Viewer {
                             path,
@@ -2941,7 +3063,11 @@ impl AppState {
                     KeyCode::Char('N') => {
                         if !matching_lines.is_empty() {
                             let cur = match_cursor.unwrap_or(0);
-                            let prev = if cur == 0 { matching_lines.len() - 1 } else { cur - 1 };
+                            let prev = if cur == 0 {
+                                matching_lines.len() - 1
+                            } else {
+                                cur - 1
+                            };
                             scroll_y = matching_lines[prev];
                             match_cursor = Some(prev);
                         }
@@ -2963,20 +3089,35 @@ impl AppState {
                     KeyCode::Tab | KeyCode::Char('p') | KeyCode::Char('m') if is_markdown => {
                         if let Some(ref prev) = preview_lines {
                             preview_mode = !preview_mode;
-                            let new_len = if preview_mode { prev.len() } else { raw_lines.len() };
+                            let new_len = if preview_mode {
+                                prev.len()
+                            } else {
+                                raw_lines.len()
+                            };
                             scroll_y = scroll_y.min(new_len.saturating_sub(1));
                             scroll_x = 0;
-                            let new_active = if preview_mode { prev.as_slice() } else { raw_lines.as_slice() };
+                            let new_active = if preview_mode {
+                                prev.as_slice()
+                            } else {
+                                raw_lines.as_slice()
+                            };
                             if let Some(ref q) = search_query {
-                                matching_lines = crate::viewer::highlight::find_matching_lines(new_active, q);
+                                matching_lines =
+                                    crate::viewer::highlight::find_matching_lines(new_active, q);
                                 match_cursor = if matching_lines.is_empty() {
                                     None
                                 } else {
-                                    Some(matching_lines.iter().position(|&l| l >= scroll_y).unwrap_or(0))
+                                    Some(
+                                        matching_lines
+                                            .iter()
+                                            .position(|&l| l >= scroll_y)
+                                            .unwrap_or(0),
+                                    )
                                 };
                             }
                         } else {
-                            self.status_message = "leaf is not available for Markdown preview".to_string();
+                            self.status_message =
+                                "leaf is not available for Markdown preview".to_string();
                         }
                         self.overlay = OverlayMode::Viewer {
                             path,
@@ -3027,7 +3168,10 @@ impl AppState {
                             match_cursor,
                         };
                     }
-                    KeyCode::PageDown | KeyCode::Char('d') if ev.code == KeyCode::PageDown || ev.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::PageDown | KeyCode::Char('d')
+                        if ev.code == KeyCode::PageDown
+                            || ev.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
                         scroll_y = (scroll_y + 20).min(active_len.saturating_sub(1));
                         self.overlay = OverlayMode::Viewer {
                             path,
@@ -3044,7 +3188,10 @@ impl AppState {
                             match_cursor,
                         };
                     }
-                    KeyCode::PageUp | KeyCode::Char('u') if ev.code == KeyCode::PageUp || ev.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::PageUp | KeyCode::Char('u')
+                        if ev.code == KeyCode::PageUp
+                            || ev.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
                         scroll_y = scroll_y.saturating_sub(20);
                         self.overlay = OverlayMode::Viewer {
                             path,
@@ -3219,7 +3366,8 @@ impl AppState {
                 }
                 KeyCode::Char('e') => {
                     if let Some(p) = self.remote_profiles.get(cursor).cloned() {
-                        let pw = credential::load_password(&p.credential_target()).unwrap_or_default();
+                        let pw =
+                            credential::load_password(&p.credential_target()).unwrap_or_default();
                         self.overlay = OverlayMode::ConnectionEdit {
                             is_new: false,
                             profile: p,
@@ -3287,16 +3435,26 @@ impl AppState {
                 }
                 KeyCode::Backspace => {
                     match cursor {
-                        0 => { profile.name.pop(); }
-                        1 => { profile.host.pop(); }
+                        0 => {
+                            profile.name.pop();
+                        }
+                        1 => {
+                            profile.host.pop();
+                        }
                         2 => {
                             let mut s = profile.port.to_string();
                             s.pop();
                             profile.port = s.parse::<u16>().unwrap_or(0);
                         }
-                        3 => { profile.user.pop(); }
-                        4 => { password_buffer.pop(); }
-                        6 => { profile.initial_dir.pop(); }
+                        3 => {
+                            profile.user.pop();
+                        }
+                        4 => {
+                            password_buffer.pop();
+                        }
+                        6 => {
+                            profile.initial_dir.pop();
+                        }
                         _ => {}
                     }
                     self.overlay = OverlayMode::ConnectionEdit {
@@ -3308,8 +3466,12 @@ impl AppState {
                 }
                 KeyCode::Char(c) => {
                     match cursor {
-                        0 => { profile.name.push(c); }
-                        1 => { profile.host.push(c); }
+                        0 => {
+                            profile.name.push(c);
+                        }
+                        1 => {
+                            profile.host.push(c);
+                        }
                         2 => {
                             if c.is_ascii_digit() {
                                 let mut s = profile.port.to_string();
@@ -3322,9 +3484,15 @@ impl AppState {
                                 }
                             }
                         }
-                        3 => { profile.user.push(c); }
-                        4 => { password_buffer.push(c); }
-                        6 => { profile.initial_dir.push(c); }
+                        3 => {
+                            profile.user.push(c);
+                        }
+                        4 => {
+                            password_buffer.push(c);
+                        }
+                        6 => {
+                            profile.initial_dir.push(c);
+                        }
                         _ => {}
                     }
                     self.overlay = OverlayMode::ConnectionEdit {
@@ -3342,13 +3510,19 @@ impl AppState {
                         profile.port = 22;
                     }
                     if profile.save_password && !password_buffer.is_empty() {
-                        let _ = credential::save_password(&profile.credential_target(), &profile.user, &password_buffer);
+                        let _ = credential::save_password(
+                            &profile.credential_target(),
+                            &profile.user,
+                            &password_buffer,
+                        );
                     } else if !profile.save_password {
                         credential::delete_password(&profile.credential_target());
                     }
                     if is_new {
                         self.remote_profiles.push(profile);
-                    } else if let Some(p) = self.remote_profiles.iter_mut().find(|p| p.id == profile.id) {
+                    } else if let Some(p) =
+                        self.remote_profiles.iter_mut().find(|p| p.id == profile.id)
+                    {
                         *p = profile;
                     }
                     self.save_remote_profiles();
@@ -3430,7 +3604,8 @@ impl AppState {
             }
             InputPromptKind::Rename { target } => {
                 if !trimmed.is_empty() {
-                    let was_current_dir = normalize_tree_key(&self.current_dir) == normalize_tree_key(&target);
+                    let was_current_dir =
+                        normalize_tree_key(&self.current_dir) == normalize_tree_key(&target);
                     match rename::rename_entry(&target, trimmed) {
                         Ok(new_path) => {
                             if was_current_dir {
@@ -3557,10 +3732,16 @@ impl AppState {
                     .collect();
                 let base_dir = base_dir_path.to_string_lossy().into_owned();
                 let hooks = crate::archive::create::CreateHooks::none();
-                match crate::archive::guarded::create_guarded(&targets, trimmed, &base_dir, true, &hooks) {
+                match crate::archive::guarded::create_guarded(
+                    &targets, trimmed, &base_dir, true, &hooks,
+                ) {
                     Ok(res) => {
                         self.reload_dir();
-                        self.status_message = format!("Created ZIP ({} entries): {}", res.entries, res.output_path.display());
+                        self.status_message = format!(
+                            "Created ZIP ({} entries): {}",
+                            res.entries,
+                            res.output_path.display()
+                        );
                     }
                     Err(e) => {
                         self.status_message = format!("ZIP compression error: {}", e.message);
@@ -3573,17 +3754,29 @@ impl AppState {
                 let env = crate::archive::extract_plan::ExtractEnv::real();
                 let hooks = crate::archive::extract::ExtractHooks::none();
                 let resolutions = std::collections::HashMap::new();
-                match crate::archive::guarded::extract_guarded(&zip_str, trimmed, &base_dir, &env, &resolutions, &hooks) {
+                match crate::archive::guarded::extract_guarded(
+                    &zip_str,
+                    trimmed,
+                    &base_dir,
+                    &env,
+                    &resolutions,
+                    &hooks,
+                ) {
                     Ok(res) => {
                         self.reload_dir();
-                        self.status_message = format!("Extracted ZIP ({} files): {}", res.extracted, res.destination.display());
+                        self.status_message = format!(
+                            "Extracted ZIP ({} files): {}",
+                            res.extracted,
+                            res.destination.display()
+                        );
                     }
                     Err(e) => {
                         self.status_message = format!("ZIP extraction error: {}", e.message);
                     }
                 }
             }
-            InputPromptKind::ConfirmDelete { .. } | InputPromptKind::ConfirmDeleteRemote { .. } => {}
+            InputPromptKind::ConfirmDelete { .. } | InputPromptKind::ConfirmDeleteRemote { .. } => {
+            }
         }
     }
 
@@ -4159,16 +4352,30 @@ impl AppState {
                     MouseEventKind::Down(MouseButton::Right) if is_markdown => {
                         if let Some(ref prev) = preview_lines {
                             preview_mode = !preview_mode;
-                            let new_len = if preview_mode { prev.len() } else { raw_lines.len() };
+                            let new_len = if preview_mode {
+                                prev.len()
+                            } else {
+                                raw_lines.len()
+                            };
                             scroll_y = scroll_y.min(new_len.saturating_sub(1));
                             scroll_x = 0;
-                            let new_active = if preview_mode { prev.as_slice() } else { raw_lines.as_slice() };
+                            let new_active = if preview_mode {
+                                prev.as_slice()
+                            } else {
+                                raw_lines.as_slice()
+                            };
                             if let Some(ref q) = search_query {
-                                matching_lines = crate::viewer::highlight::find_matching_lines(new_active, q);
+                                matching_lines =
+                                    crate::viewer::highlight::find_matching_lines(new_active, q);
                                 match_cursor = if matching_lines.is_empty() {
                                     None
                                 } else {
-                                    Some(matching_lines.iter().position(|&l| l >= scroll_y).unwrap_or(0))
+                                    Some(
+                                        matching_lines
+                                            .iter()
+                                            .position(|&l| l >= scroll_y)
+                                            .unwrap_or(0),
+                                    )
                                 };
                             }
                         }

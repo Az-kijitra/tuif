@@ -76,7 +76,10 @@ fn open_for_times(path: &Path) -> io::Result<File> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
-        fs::OpenOptions::new().write(true).custom_flags(0x0200_0000).open(path)
+        fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(0x0200_0000)
+            .open(path)
     }
     #[cfg(not(windows))]
     {
@@ -140,11 +143,15 @@ pub fn extract(
     let plan = build_plan(zip_path, destination, base_dir, env)?;
     for conflict in &plan.conflicts {
         if !resolutions.contains_key(conflict) {
-            return Err(ArchiveError::new(Code::Conflict, "an existing file needs an overwrite/skip decision (R-375)")
-                .with_entry(conflict.clone()));
+            return Err(ArchiveError::new(
+                Code::Conflict,
+                "an existing file needs an overwrite/skip decision (R-375)",
+            )
+            .with_entry(conflict.clone()));
         }
     }
-    let file = File::open(zip_path).map_err(|e| ArchiveError::new(classify_io_error(&e), e.to_string()))?;
+    let file = File::open(zip_path)
+        .map_err(|e| ArchiveError::new(classify_io_error(&e), e.to_string()))?;
     let mut archive = zip::ZipArchive::new(BufReader::new(file))
         .map_err(|e| ArchiveError::new(super::error::classify_zip_error(&e), e.to_string()))?;
 
@@ -153,15 +160,27 @@ pub fn extract(
         return Err(canceled());
     }
     // From here on writing starts.
-    fs::create_dir_all(&plan.destination).map_err(|e| ArchiveError::new(classify_io_error(&e), e.to_string()))?;
+    fs::create_dir_all(&plan.destination)
+        .map_err(|e| ArchiveError::new(classify_io_error(&e), e.to_string()))?;
     // R-343-2 (3): the created destination must normalize to what was validated.
     match resolve_destination(&plan.destination, base_dir) {
         Ok(again) if again == plan.destination => {}
-        _ => return Err(ArchiveError::new(Code::ZipEntryRejected, "the destination changed while it was being created")),
+        _ => {
+            return Err(ArchiveError::new(
+                Code::ZipEntryRejected,
+                "the destination changed while it was being created",
+            ))
+        }
     }
 
     let conflict_set = plan.conflicts.iter().map(String::as_str).collect();
-    let mut run = Run { plan: &plan, conflict_set, extracted: 0, skipped: 0, new_dirs: Vec::new() };
+    let mut run = Run {
+        plan: &plan,
+        conflict_set,
+        extracted: 0,
+        skipped: 0,
+        new_dirs: Vec::new(),
+    };
     let mut outcome = ExtractOutcome::Completed;
     let mut error = None;
     for (position, entry) in plan.entries.iter().enumerate() {
@@ -170,11 +189,24 @@ pub fn extract(
             error = Some(canceled());
             break;
         }
-        (hooks.on_progress)(&ProgressEvent { name: &entry.entry_path, index: position + 1, total: plan.total_entries });
-        match run.process(&mut archive, entry, resolutions.get(&entry.entry_path).copied(), hooks) {
+        (hooks.on_progress)(&ProgressEvent {
+            name: &entry.entry_path,
+            index: position + 1,
+            total: plan.total_entries,
+        });
+        match run.process(
+            &mut archive,
+            entry,
+            resolutions.get(&entry.entry_path).copied(),
+            hooks,
+        ) {
             Ok(()) => {}
             Err(e) => {
-                outcome = if e.code == Code::Canceled { ExtractOutcome::Canceled } else { ExtractOutcome::Failed };
+                outcome = if e.code == Code::Canceled {
+                    ExtractOutcome::Canceled
+                } else {
+                    ExtractOutcome::Failed
+                };
                 error = Some(e);
                 break;
             }
@@ -214,7 +246,11 @@ impl Run<'_> {
         hooks: &ExtractHooks,
     ) -> Result<(), ArchiveError> {
         // A decision only counts for an entry that was planned as a conflict.
-        let resolution = if self.conflict_set.contains(entry.entry_path.as_str()) { resolution } else { None };
+        let resolution = if self.conflict_set.contains(entry.entry_path.as_str()) {
+            resolution
+        } else {
+            None
+        };
         if !entry.is_dir && resolution == Some(Resolution::Skip) {
             self.skipped += 1;
             return Ok(());
@@ -223,7 +259,12 @@ impl Run<'_> {
         if entry.is_dir {
             self.make_dir(entry)?;
         } else {
-            self.write_file(archive, entry, resolution == Some(Resolution::Overwrite), hooks)?;
+            self.write_file(
+                archive,
+                entry,
+                resolution == Some(Resolution::Overwrite),
+                hooks,
+            )?;
         }
         self.extracted += 1;
         Ok(())
@@ -240,7 +281,10 @@ impl Run<'_> {
         let mut probe = parent.to_path_buf();
         while fs::symlink_metadata(&probe).is_err() {
             if !probe.pop() {
-                return Err(rejected("no existing ancestor for the extraction path", entry));
+                return Err(rejected(
+                    "no existing ancestor for the extraction path",
+                    entry,
+                ));
             }
         }
         self.check_inside(&probe, entry)?;
@@ -250,12 +294,20 @@ impl Run<'_> {
 
     /// `path` must canonicalize to a directory inside the destination.
     fn check_inside(&self, path: &Path, entry: &PlanEntry) -> Result<(), ArchiveError> {
-        let canonical = fs::canonicalize(path).map_err(|_| rejected("a link on the extraction path cannot be resolved", entry))?;
+        let canonical = fs::canonicalize(path)
+            .map_err(|_| rejected("a link on the extraction path cannot be resolved", entry))?;
         if !canonical.starts_with(&self.plan.destination) {
-            return Err(rejected("a link on the extraction path leads outside the destination", entry));
+            return Err(rejected(
+                "a link on the extraction path leads outside the destination",
+                entry,
+            ));
         }
         if !canonical.is_dir() {
-            return Err(ArchiveError::new(Code::Conflict, "a file exists where a folder is needed").with_entry(entry.entry_path.clone()));
+            return Err(ArchiveError::new(
+                Code::Conflict,
+                "a file exists where a folder is needed",
+            )
+            .with_entry(entry.entry_path.clone()));
         }
         Ok(())
     }
@@ -266,8 +318,11 @@ impl Run<'_> {
             Ok(meta) if meta.file_type().is_symlink() => self.check_inside(&entry.target, entry)?,
             Ok(meta) if meta.is_dir() => {}
             Ok(_) => {
-                return Err(ArchiveError::new(Code::Conflict, "a file exists where a folder would be created")
-                    .with_entry(entry.entry_path.clone()))
+                return Err(ArchiveError::new(
+                    Code::Conflict,
+                    "a file exists where a folder would be created",
+                )
+                .with_entry(entry.entry_path.clone()))
             }
             Err(_) => {
                 match fs::create_dir(&entry.target) {
@@ -293,14 +348,22 @@ impl Run<'_> {
     ) -> Result<(), ArchiveError> {
         // R-367 / R-376: re-inspect the final name right before writing.
         match fs::symlink_metadata(&entry.target) {
-            Ok(meta) if meta.file_type().is_symlink() => return Err(rejected("a link exists at the extraction path", entry)),
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(rejected("a link exists at the extraction path", entry))
+            }
             Ok(meta) if meta.is_dir() => {
-                return Err(ArchiveError::new(Code::Conflict, "a folder exists where a file would be extracted")
-                    .with_entry(entry.entry_path.clone()))
+                return Err(ArchiveError::new(
+                    Code::Conflict,
+                    "a folder exists where a file would be extracted",
+                )
+                .with_entry(entry.entry_path.clone()))
             }
             Ok(_) if !overwrite => {
-                return Err(ArchiveError::new(Code::Conflict, "a file appeared at the extraction path")
-                    .with_entry(entry.entry_path.clone()))
+                return Err(ArchiveError::new(
+                    Code::Conflict,
+                    "a file appeared at the extraction path",
+                )
+                .with_entry(entry.entry_path.clone()))
             }
             _ => {}
         }
@@ -309,11 +372,17 @@ impl Run<'_> {
         if entry.uncompressed_size > 0 {
             // R-374-1 special case: a declared size of 0 is never read (a
             // Deflate stream of 0 compressed bytes is an `UnexpectedEof`).
-            let mut zip_file = archive
-                .by_index(entry.index)
-                .map_err(|e| ArchiveError::new(super::error::classify_zip_error(&e), e.to_string()).with_entry(entry.entry_path.clone()))?;
-            copy_entry(&mut zip_file, temp.file(), entry.uncompressed_size, hooks.should_cancel)
-                .map_err(|e| e.with_entry(entry.entry_path.clone()))?;
+            let mut zip_file = archive.by_index(entry.index).map_err(|e| {
+                ArchiveError::new(super::error::classify_zip_error(&e), e.to_string())
+                    .with_entry(entry.entry_path.clone())
+            })?;
+            copy_entry(
+                &mut zip_file,
+                temp.file(),
+                entry.uncompressed_size,
+                hooks.should_cancel,
+            )
+            .map_err(|e| e.with_entry(entry.entry_path.clone()))?;
         }
         temp.file().flush().map_err(|e| io_failure(&e, entry))?;
         temp.close_handle();
@@ -335,7 +404,9 @@ impl Run<'_> {
 /// bad streams as `InvalidInput`, the crate's CRC check as `InvalidData`).
 fn classify_read_error(err: &io::Error) -> Code {
     match err.kind() {
-        io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput | io::ErrorKind::UnexpectedEof => Code::ZipCorrupt,
+        io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput | io::ErrorKind::UnexpectedEof => {
+            Code::ZipCorrupt
+        }
         _ => classify_io_error(err),
     }
 }
@@ -362,22 +433,33 @@ pub fn copy_entry<R: Read, W: Write>(
         let read = match reader.read(&mut buffer[..want]) {
             Ok(read) => read,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(ArchiveError::new(classify_read_error(&e), format!("cannot read the entry data: {e}"))),
+            Err(e) => {
+                return Err(ArchiveError::new(
+                    classify_read_error(&e),
+                    format!("cannot read the entry data: {e}"),
+                ))
+            }
         };
         if read == 0 {
             break;
         }
         let allowed = (declared_size - total).min(read as u64) as usize;
-        writer
-            .write_all(&buffer[..allowed])
-            .map_err(|e| ArchiveError::new(classify_io_error(&e), format!("cannot write the file: {e}")))?;
+        writer.write_all(&buffer[..allowed]).map_err(|e| {
+            ArchiveError::new(classify_io_error(&e), format!("cannot write the file: {e}"))
+        })?;
         total += allowed as u64;
         if allowed < read {
-            return Err(ArchiveError::new(Code::ZipCorrupt, "the entry holds more data than its declared size"));
+            return Err(ArchiveError::new(
+                Code::ZipCorrupt,
+                "the entry holds more data than its declared size",
+            ));
         }
     }
     if total < declared_size {
-        return Err(ArchiveError::new(Code::ZipCorrupt, "the entry holds less data than its declared size"));
+        return Err(ArchiveError::new(
+            Code::ZipCorrupt,
+            "the entry holds less data than its declared size",
+        ));
     }
     Ok(total)
 }

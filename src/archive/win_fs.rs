@@ -39,7 +39,10 @@ mod imp {
     fn wide(path: &Path) -> io::Result<Vec<u16>> {
         let mut text: Vec<u16> = path.as_os_str().encode_wide().collect();
         if text.contains(&0) {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path contains a NUL character"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path contains a NUL character",
+            ));
         }
         let verbatim: Vec<u16> = r"\\?\".encode_utf16().collect();
         if text.len() >= 240 && !text.starts_with(&verbatim) && path.is_absolute() {
@@ -78,7 +81,14 @@ mod imp {
         // SAFETY: `path_w` is a NUL-terminated UTF-16 buffer that outlives the
         // call; `available` is a valid writable u64; the two optional output
         // pointers are null, which the API permits.
-        let ok = unsafe { GetDiskFreeSpaceExW(path_w.as_ptr(), &mut available, std::ptr::null_mut(), std::ptr::null_mut()) };
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                path_w.as_ptr(),
+                &mut available,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
         if ok == 0 {
             Err(io::Error::last_os_error())
         } else {

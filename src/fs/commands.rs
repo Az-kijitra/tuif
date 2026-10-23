@@ -23,7 +23,10 @@ impl From<io::Error> for FsListDirErrorDto {
             io::ErrorKind::NotADirectory => "not_a_directory",
             _ => "other",
         };
-        Self { code: code.to_string(), message: e.to_string() }
+        Self {
+            code: code.to_string(),
+            message: e.to_string(),
+        }
     }
 }
 
@@ -67,7 +70,10 @@ pub fn fs_list_dir(
 
 impl FsListDirErrorDto {
     pub fn invalid_path(path: &str) -> Self {
-        Self { code: abs_path::INVALID_PATH_CODE.to_string(), message: format!("not an absolute path: {path}") }
+        Self {
+            code: abs_path::INVALID_PATH_CODE.to_string(),
+            message: format!("not an absolute path: {path}"),
+        }
     }
 }
 

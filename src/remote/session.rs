@@ -70,7 +70,11 @@ impl client::Handler for ClientHandler {
 
 fn fingerprint_of(key: &PublicKeyOrCertificate) -> String {
     let pk = key.public_key();
-    format!("{} {}", pk.algorithm().as_str(), pk.fingerprint(HashAlg::Sha256))
+    format!(
+        "{} {}",
+        pk.algorithm().as_str(),
+        pk.fingerprint(HashAlg::Sha256)
+    )
 }
 
 /// Result of step 1 (key exchange done, not yet authenticated).
@@ -92,7 +96,10 @@ impl std::fmt::Debug for PendingHandshake {
 }
 
 /// Step 1: TCP connect + SSH key exchange (no credentials are sent).
-pub fn handshake(profile: &ConnectionProfile, known: &KnownHosts) -> Result<PendingHandshake, String> {
+pub fn handshake(
+    profile: &ConnectionProfile,
+    known: &KnownHosts,
+) -> Result<PendingHandshake, String> {
     let endpoint = profile.endpoint_key();
     let expected = known.expected(&endpoint);
     let observed = Arc::new(Mutex::new(None));
@@ -108,11 +115,20 @@ pub fn handshake(profile: &ConnectionProfile, known: &KnownHosts) -> Result<Pend
     let host = profile.host.trim().to_string();
     let port = profile.port;
     let res = runtime().block_on(async move {
-        tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, (host.as_str(), port), handler)).await
+        tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            client::connect(config, (host.as_str(), port), handler),
+        )
+        .await
     });
     let seen = observed.lock().ok().and_then(|s| s.clone());
     let handle = match res {
-        Err(_) => return Err(format!("Connection to {} timed out", profile.endpoint_key())),
+        Err(_) => {
+            return Err(format!(
+                "Connection to {} timed out",
+                profile.endpoint_key()
+            ))
+        }
         Ok(Err(e)) => {
             if let (Some(exp), Some(got)) = (&expected, &seen) {
                 if exp != got {
@@ -139,7 +155,9 @@ impl PendingHandshake {
     /// Step 2: authenticate with a password (keyboard-interactive fallback) and open SFTP.
     pub fn authenticate(self, password: &str) -> Result<RemoteSession, String> {
         let PendingHandshake {
-            mut handle, profile, ..
+            mut handle,
+            profile,
+            ..
         } = self;
         let user = profile.user.clone();
         let pw = password.to_string();
@@ -353,7 +371,11 @@ impl RemoteSession {
                 out.push(Entry {
                     ext: ext_of(&name, is_dir),
                     path: PathBuf::from(&full),
-                    entry_type: if is_dir { EntryType::Dir } else { EntryType::File },
+                    entry_type: if is_dir {
+                        EntryType::Dir
+                    } else {
+                        EntryType::File
+                    },
                     size: if is_dir { 0 } else { meta.size.unwrap_or(0) },
                     modified: mtime_string(meta.mtime),
                     hidden,
@@ -365,7 +387,11 @@ impl RemoteSession {
     }
 
     /// Child directories of `path` as `(name, posix_path)`, sorted case-insensitively.
-    pub fn list_child_dirs(&self, path: &str, show_hidden: bool) -> Result<Vec<(String, String)>, String> {
+    pub fn list_child_dirs(
+        &self,
+        path: &str,
+        show_hidden: bool,
+    ) -> Result<Vec<(String, String)>, String> {
         let mut dirs: Vec<(String, String)> = self
             .list_dir(path, show_hidden)?
             .into_iter()
@@ -387,7 +413,10 @@ impl RemoteSession {
         runtime().block_on(async {
             let mut f = self
                 .sftp
-                .open_with_flags(path, OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE)
+                .open_with_flags(
+                    path,
+                    OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+                )
                 .await
                 .map_err(|e| err("Create file", path, e))?;
             f.shutdown().await.map_err(|e| err("Create file", path, e))
@@ -409,7 +438,11 @@ impl RemoteSession {
                 .await
                 .map_err(|e| err("Delete", path, e))?;
             if !meta.is_dir() {
-                return self.sftp.remove_file(path).await.map_err(|e| err("Delete", path, e));
+                return self
+                    .sftp
+                    .remove_file(path)
+                    .await
+                    .map_err(|e| err("Delete", path, e));
             }
             // Post-order traversal with an explicit stack (no async recursion).
             let mut stack = vec![(rpath::normalize(path), false)];
@@ -422,7 +455,11 @@ impl RemoteSession {
                     continue;
                 }
                 stack.push((dir.clone(), true));
-                let rd = self.sftp.read_dir(dir.clone()).await.map_err(|e| err("List", &dir, e))?;
+                let rd = self
+                    .sftp
+                    .read_dir(dir.clone())
+                    .await
+                    .map_err(|e| err("List", &dir, e))?;
                 for de in rd {
                     let name = de.file_name();
                     if name == "." || name == ".." {
@@ -446,7 +483,13 @@ impl RemoteSession {
     /// Downloads `remote` (file or directory tree) to exactly `local_dest`.
     pub fn download(&self, remote: &str, local_dest: &Path) -> Result<TransferStats, String> {
         let cancel = AtomicBool::new(false);
-        self.download_with_progress(remote, local_dest, &cancel, |_| {}, |_| ConflictChoice::Overwrite)
+        self.download_with_progress(
+            remote,
+            local_dest,
+            &cancel,
+            |_| {},
+            |_| ConflictChoice::Overwrite,
+        )
     }
 
     /// Downloads `remote` to `local_dest` with cancellation, conflict resolution, and progress reporting.
@@ -469,7 +512,11 @@ impl RemoteSession {
                 on_progress: &mut on_progress,
                 on_conflict: &mut on_conflict,
             };
-            let meta = self.sftp.metadata(remote).await.map_err(|e| err("Stat", remote, e))?;
+            let meta = self
+                .sftp
+                .metadata(remote)
+                .await
+                .map_err(|e| err("Stat", remote, e))?;
             if !meta.is_dir() {
                 self.download_file_with_progress(
                     remote,
@@ -487,9 +534,14 @@ impl RemoteSession {
                 if cx.cancel.load(Ordering::Relaxed) {
                     return Err("Transfer cancelled by user".to_string());
                 }
-                std::fs::create_dir_all(&ldir).map_err(|e| err("Create folder", &ldir.display().to_string(), e))?;
+                std::fs::create_dir_all(&ldir)
+                    .map_err(|e| err("Create folder", &ldir.display().to_string(), e))?;
                 stats.dirs += 1;
-                let rd = self.sftp.read_dir(rdir.clone()).await.map_err(|e| err("List", &rdir, e))?;
+                let rd = self
+                    .sftp
+                    .read_dir(rdir.clone())
+                    .await
+                    .map_err(|e| err("List", &rdir, e))?;
                 for de in rd {
                     if cx.cancel.load(Ordering::Relaxed) {
                         return Err("Transfer cancelled by user".to_string());
@@ -563,11 +615,16 @@ impl RemoteSession {
             }
         }
 
-        let mut rf = self.sftp.open(remote).await.map_err(|e| err("Open", remote, e))?;
+        let mut rf = self
+            .sftp
+            .open(remote)
+            .await
+            .map_err(|e| err("Open", remote, e))?;
         if let Some(parent) = local.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let mut lf = std::fs::File::create(local).map_err(|e| err("Write", &local.display().to_string(), e))?;
+        let mut lf = std::fs::File::create(local)
+            .map_err(|e| err("Write", &local.display().to_string(), e))?;
         let mut buf = vec![0u8; CHUNK];
         let mut file_transferred = 0u64;
         let mut last_update = std::time::Instant::now();
@@ -586,7 +643,10 @@ impl RemoteSession {
                 let _ = std::fs::remove_file(local);
                 return Err("Transfer cancelled by user".to_string());
             }
-            let n = rf.read(&mut buf).await.map_err(|e| err("Download", remote, e))?;
+            let n = rf
+                .read(&mut buf)
+                .await
+                .map_err(|e| err("Download", remote, e))?;
             if n == 0 {
                 break;
             }
@@ -630,7 +690,13 @@ impl RemoteSession {
     /// Uploads `local` (file or directory tree) to exactly `remote_dest`.
     pub fn upload(&self, local: &Path, remote_dest: &str) -> Result<TransferStats, String> {
         let cancel = AtomicBool::new(false);
-        self.upload_with_progress(local, remote_dest, &cancel, |_| {}, |_| ConflictChoice::Overwrite)
+        self.upload_with_progress(
+            local,
+            remote_dest,
+            &cancel,
+            |_| {},
+            |_| ConflictChoice::Overwrite,
+        )
     }
 
     /// Uploads `local` to `remote_dest` with cancellation, conflict resolution, and progress reporting.
@@ -653,16 +719,11 @@ impl RemoteSession {
                 on_progress: &mut on_progress,
                 on_conflict: &mut on_conflict,
             };
-            let meta = std::fs::metadata(local).map_err(|e| err("Stat", &local.display().to_string(), e))?;
+            let meta = std::fs::metadata(local)
+                .map_err(|e| err("Stat", &local.display().to_string(), e))?;
             if !meta.is_dir() {
-                self.upload_file_with_progress(
-                    local,
-                    remote_dest,
-                    meta.len(),
-                    &mut stats,
-                    &mut cx,
-                )
-                .await?;
+                self.upload_file_with_progress(local, remote_dest, meta.len(), &mut stats, &mut cx)
+                    .await?;
                 return Ok(stats);
             }
             let mut stack = vec![(local.to_path_buf(), rpath::normalize(remote_dest))];
@@ -677,7 +738,8 @@ impl RemoteSession {
                         .map_err(|e| err("Create folder", &rdir, e))?;
                 }
                 stats.dirs += 1;
-                let rd = std::fs::read_dir(&ldir).map_err(|e| err("List", &ldir.display().to_string(), e))?;
+                let rd = std::fs::read_dir(&ldir)
+                    .map_err(|e| err("List", &ldir.display().to_string(), e))?;
                 for de in rd.flatten() {
                     if cx.cancel.load(Ordering::Relaxed) {
                         return Err("Transfer cancelled by user".to_string());
@@ -690,11 +752,7 @@ impl RemoteSession {
                     } else {
                         let fsize = de.metadata().map(|m| m.len()).unwrap_or(0);
                         self.upload_file_with_progress(
-                            &lchild,
-                            &rchild,
-                            fsize,
-                            &mut stats,
-                            &mut cx,
+                            &lchild, &rchild, fsize, &mut stats, &mut cx,
                         )
                         .await?;
                     }
@@ -722,7 +780,12 @@ impl RemoteSession {
             .unwrap_or_else(|| remote.to_string());
 
         // Check for conflict before opening/truncating remote file
-        if self.sftp.try_exists(remote.to_string()).await.unwrap_or(false) {
+        if self
+            .sftp
+            .try_exists(remote.to_string())
+            .await
+            .unwrap_or(false)
+        {
             match (cx.on_conflict)(&fname) {
                 ConflictChoice::Overwrite | ConflictChoice::OverwriteAll => {}
                 ConflictChoice::Skip | ConflictChoice::SkipAll => {
@@ -743,10 +806,14 @@ impl RemoteSession {
             }
         }
 
-        let mut lf = std::fs::File::open(local).map_err(|e| err("Read", &local.display().to_string(), e))?;
+        let mut lf =
+            std::fs::File::open(local).map_err(|e| err("Read", &local.display().to_string(), e))?;
         let mut rf = self
             .sftp
-            .open_with_flags(remote, OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
+            .open_with_flags(
+                remote,
+                OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
+            )
             .await
             .map_err(|e| err("Create", remote, e))?;
         let mut buf = vec![0u8; CHUNK];
@@ -767,7 +834,9 @@ impl RemoteSession {
                 let _ = self.sftp.remove_file(remote.to_string()).await;
                 return Err("Transfer cancelled by user".to_string());
             }
-            let n = lf.read(&mut buf).map_err(|e| err("Read", &local.display().to_string(), e))?;
+            let n = lf
+                .read(&mut buf)
+                .map_err(|e| err("Read", &local.display().to_string(), e))?;
             if n == 0 {
                 break;
             }
@@ -818,9 +887,17 @@ impl RemoteSession {
     }
 
     /// Recursively counts files and total bytes of a remote file or directory.
-    pub fn calc_remote_size(&self, path: &str, cancel: &AtomicBool) -> Result<(usize, u64), String> {
+    pub fn calc_remote_size(
+        &self,
+        path: &str,
+        cancel: &AtomicBool,
+    ) -> Result<(usize, u64), String> {
         runtime().block_on(async {
-            let meta = self.sftp.metadata(path).await.map_err(|e| err("Stat", path, e))?;
+            let meta = self
+                .sftp
+                .metadata(path)
+                .await
+                .map_err(|e| err("Stat", path, e))?;
             if !meta.is_dir() {
                 return Ok((1, meta.size.unwrap_or(0)));
             }
@@ -831,7 +908,11 @@ impl RemoteSession {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("Transfer cancelled by user".to_string());
                 }
-                let rd = self.sftp.read_dir(dir.clone()).await.map_err(|e| err("List", &dir, e))?;
+                let rd = self
+                    .sftp
+                    .read_dir(dir.clone())
+                    .await
+                    .map_err(|e| err("List", &dir, e))?;
                 for de in rd {
                     if cancel.load(Ordering::Relaxed) {
                         return Err("Transfer cancelled by user".to_string());

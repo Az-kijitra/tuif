@@ -38,16 +38,26 @@ impl TempFile {
     /// per attempt; on `AlreadyExists` it retries, at most
     /// `MAX_CREATE_NEW_ATTEMPTS` attempts in total, then returns an error.
     /// An existing file is never truncated or reused.
-    pub fn create_in_with(dir: &Path, next_name: &mut dyn FnMut() -> String) -> io::Result<TempFile> {
+    pub fn create_in_with(
+        dir: &Path,
+        next_name: &mut dyn FnMut() -> String,
+    ) -> io::Result<TempFile> {
         for _ in 0..MAX_CREATE_NEW_ATTEMPTS {
             let path = dir.join(next_name());
             match OpenOptions::new().write(true).create_new(true).open(&path) {
-                Ok(file) => return Ok(TempFile { path, file: Some(file) }),
+                Ok(file) => {
+                    return Ok(TempFile {
+                        path,
+                        file: Some(file),
+                    })
+                }
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
                 Err(e) => return Err(e),
             }
         }
-        Err(io::Error::other("could not create a unique temporary file (retry limit reached)"))
+        Err(io::Error::other(
+            "could not create a unique temporary file (retry limit reached)",
+        ))
     }
 
     pub fn path(&self) -> &Path {

@@ -133,7 +133,11 @@ fn whole_file_failure(message: String, line: Option<u32>) -> ConfigTomlLoadResul
     ConfigTomlLoadResult {
         keymap: KeymapRawLoadResult {
             entries: Vec::new(),
-            parse_error: Some(KeymapParseError { message, line, whole_file: true }),
+            parse_error: Some(KeymapParseError {
+                message,
+                line,
+                whole_file: true,
+            }),
         },
         ui_theme: UiThemeRaw::Missing,
         theme: Theme::default(),
@@ -179,7 +183,9 @@ pub fn load(path: &Path) -> ConfigTomlLoadResult {
         Err(e) => return whole_file_failure(e.to_string(), line_number_from_span(&e, text)),
     };
 
-    let Some(table) = value.as_table() else { return ConfigTomlLoadResult::default() };
+    let Some(table) = value.as_table() else {
+        return ConfigTomlLoadResult::default();
+    };
     let ui_theme = raw_ui_theme(table);
 
     let mut theme = match table.get("theme") {
@@ -318,11 +324,20 @@ pub fn load(path: &Path) -> ConfigTomlLoadResult {
                     .into_iter()
                     .map(|(action_id, value)| RawKeymapEntry { action_id, value })
                     .collect();
-                KeymapRawLoadResult { entries, parse_error: None }
+                KeymapRawLoadResult {
+                    entries,
+                    parse_error: None,
+                }
             }
         }
     };
-    ConfigTomlLoadResult { keymap, ui_theme, theme, general, layout }
+    ConfigTomlLoadResult {
+        keymap,
+        ui_theme,
+        theme,
+        general,
+        layout,
+    }
 }
 
 fn default_theme_from_ui_theme(ui_theme: &UiThemeRaw) -> Theme {
@@ -368,8 +383,15 @@ mod tests {
 
         assert_eq!(r.entries, Vec::new());
         assert!(r.parse_error.is_some());
-        assert_eq!(fs::read_to_string(&path).unwrap(), bad, "config.toml must be byte-for-byte unchanged");
-        assert!(!dir.path().join("config.toml.bak").exists(), "no backup file is ever created for config.toml");
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            bad,
+            "config.toml must be byte-for-byte unchanged"
+        );
+        assert!(
+            !dir.path().join("config.toml.bak").exists(),
+            "no backup file is ever created for config.toml"
+        );
     }
 
     // R-45-2: a line number is recovered for a syntax error later in the file.
@@ -383,7 +405,10 @@ mod tests {
         let r = load(&path).keymap;
 
         let err = r.parse_error.expect("must be a parse error");
-        assert!(err.line.is_some(), "a line number must be recoverable for this error: {err:?}");
+        assert!(
+            err.line.is_some(),
+            "a line number must be recoverable for this error: {err:?}"
+        );
         assert!(!err.message.is_empty());
     }
 
@@ -433,10 +458,16 @@ mod tests {
         assert_eq!(
             sorted(r.entries),
             sorted(vec![
-                RawKeymapEntry { action_id: "toggle_hidden".into(), value: Some("Ctrl+Alt+H".into()) },
+                RawKeymapEntry {
+                    action_id: "toggle_hidden".into(),
+                    value: Some("Ctrl+Alt+H".into())
+                },
                 // "undo" is not one of the 34 known action ids -- MUST-86: this
                 // module does NOT filter it out, that is keymap-validate.ts's job.
-                RawKeymapEntry { action_id: "undo".into(), value: Some("Ctrl+Z".into()) },
+                RawKeymapEntry {
+                    action_id: "undo".into(),
+                    value: Some("Ctrl+Z".into())
+                },
             ])
         );
     }
@@ -447,7 +478,11 @@ mod tests {
     fn a_non_string_value_becomes_value_none_without_failing_the_whole_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
-        fs::write(&path, "[input_keymap_custom]\nsort_menu = 123\ntoggle_time = \"Ctrl+Alt+T\"\n").unwrap();
+        fs::write(
+            &path,
+            "[input_keymap_custom]\nsort_menu = 123\ntoggle_time = \"Ctrl+Alt+T\"\n",
+        )
+        .unwrap();
 
         let r = load(&path).keymap;
 
@@ -455,8 +490,14 @@ mod tests {
         assert_eq!(
             sorted(r.entries),
             sorted(vec![
-                RawKeymapEntry { action_id: "sort_menu".into(), value: None },
-                RawKeymapEntry { action_id: "toggle_time".into(), value: Some("Ctrl+Alt+T".into()) },
+                RawKeymapEntry {
+                    action_id: "sort_menu".into(),
+                    value: None
+                },
+                RawKeymapEntry {
+                    action_id: "toggle_time".into(),
+                    value: Some("Ctrl+Alt+T".into())
+                },
             ])
         );
     }
@@ -472,7 +513,13 @@ mod tests {
 
         let r = load(&path).keymap;
 
-        assert_eq!(r.entries, vec![RawKeymapEntry { action_id: "help_keymap".into(), value: Some(String::new()) }]);
+        assert_eq!(
+            r.entries,
+            vec![RawKeymapEntry {
+                action_id: "help_keymap".into(),
+                value: Some(String::new())
+            }]
+        );
     }
 
     // Non-UTF-8 bytes are a parse failure too (SHOULD-121), like navigation.rs.
@@ -487,7 +534,11 @@ mod tests {
 
         assert_eq!(r.entries, Vec::new());
         assert!(r.parse_error.is_some());
-        assert_eq!(fs::read(&path).unwrap(), bytes, "config.toml must be byte-for-byte unchanged");
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            bytes,
+            "config.toml must be byte-for-byte unchanged"
+        );
     }
 
     // SHOULD-121: a non-NotFound I/O error (e.g. the path is a directory) is
@@ -500,7 +551,9 @@ mod tests {
 
         let r = load(&path).keymap;
 
-        let err = r.parse_error.expect("a directory at the path must be reported as a parse error");
+        let err = r
+            .parse_error
+            .expect("a directory at the path must be reported as a parse error");
         assert!(err.line.is_none());
     }
 
@@ -516,8 +569,17 @@ mod tests {
 
         let r = load(&path).keymap;
 
-        assert!(r.parse_error.is_none(), "a BOM-prefixed valid config.toml must still load: {r:?}");
-        assert_eq!(r.entries, vec![RawKeymapEntry { action_id: "toggle_hidden".into(), value: Some("Ctrl+Alt+H".into()) }]);
+        assert!(
+            r.parse_error.is_none(),
+            "a BOM-prefixed valid config.toml must still load: {r:?}"
+        );
+        assert_eq!(
+            r.entries,
+            vec![RawKeymapEntry {
+                action_id: "toggle_hidden".into(),
+                value: Some("Ctrl+Alt+H".into())
+            }]
+        );
     }
 
     // AC-63/AC-630 (MUST-92): `config.toml`'s content AND mtime are
@@ -537,10 +599,21 @@ mod tests {
         load(&path);
 
         let mtime_after = fs::metadata(&path).unwrap().modified().unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), original, "content must be byte-for-byte unchanged");
-        assert_eq!(mtime_before, mtime_after, "mtime must be unchanged (no write ever happens)");
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            original,
+            "content must be byte-for-byte unchanged"
+        );
+        assert_eq!(
+            mtime_before, mtime_after,
+            "mtime must be unchanged (no write ever happens)"
+        );
         let entries: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
-        assert_eq!(entries.len(), 1, "load must never create a sibling file (no .bak, no .tmp)");
+        assert_eq!(
+            entries.len(),
+            1,
+            "load must never create a sibling file (no .bak, no .tmp)"
+        );
     }
 
     #[test]
@@ -626,9 +699,18 @@ fuzzy_find = "Ctrl+P"
         assert_eq!(
             entries,
             sorted(vec![
-                RawKeymapEntry { action_id: "open".into(), value: Some("Enter".into()) },
-                RawKeymapEntry { action_id: "exit".into(), value: Some("q".into()) },
-                RawKeymapEntry { action_id: "fuzzy_find".into(), value: Some("Ctrl+P".into()) },
+                RawKeymapEntry {
+                    action_id: "open".into(),
+                    value: Some("Enter".into())
+                },
+                RawKeymapEntry {
+                    action_id: "exit".into(),
+                    value: Some("q".into())
+                },
+                RawKeymapEntry {
+                    action_id: "fuzzy_find".into(),
+                    value: Some("Ctrl+P".into())
+                },
             ])
         );
     }

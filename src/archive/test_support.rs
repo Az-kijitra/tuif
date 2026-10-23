@@ -41,10 +41,15 @@ pub fn read_string(path: &Path) -> String {
 /// place links in trees they compare.
 pub fn tree(dir: &Path) -> BTreeMap<String, Option<Vec<u8>>> {
     fn walk(base: &Path, dir: &Path, out: &mut BTreeMap<String, Option<Vec<u8>>>) {
-        for entry in fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display())) {
+        for entry in fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()))
+        {
             let entry = entry.expect("dir entry");
             let path = entry.path();
-            let rel = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+            let rel = path
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             if entry.file_type().expect("file type").is_dir() {
                 out.insert(rel, None);
                 walk(base, &path, out);
@@ -69,9 +74,17 @@ pub fn tree_names(dir: &Path) -> Vec<String> {
 pub fn assert_no_temp_leftovers(dir: &Path) {
     let leftovers: Vec<String> = tree_names(dir)
         .into_iter()
-        .filter(|n| n.rsplit('/').next().map(|f| f.starts_with(".rfz-") || f.ends_with(".tmp")).unwrap_or(false))
+        .filter(|n| {
+            n.rsplit('/')
+                .next()
+                .map(|f| f.starts_with(".rfz-") || f.ends_with(".tmp"))
+                .unwrap_or(false)
+        })
         .collect();
-    assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+    assert!(
+        leftovers.is_empty(),
+        "temp files left behind: {leftovers:?}"
+    );
 }
 
 /// Creates a directory link `link` -> `target`: an NTFS junction
@@ -141,7 +154,10 @@ pub fn set_mtime(path: &Path, time: SystemTime) -> io::Result<()> {
     let file = {
         use std::os::windows::fs::OpenOptionsExt;
         // FILE_FLAG_BACKUP_SEMANTICS lets us open directories.
-        fs::OpenOptions::new().write(true).custom_flags(0x0200_0000).open(path)?
+        fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(0x0200_0000)
+            .open(path)?
     };
     #[cfg(not(windows))]
     let file = fs::File::open(path)?;
@@ -149,7 +165,9 @@ pub fn set_mtime(path: &Path, time: SystemTime) -> io::Result<()> {
 }
 
 pub fn mtime(path: &Path) -> SystemTime {
-    fs::metadata(path).and_then(|m| m.modified()).unwrap_or_else(|e| panic!("mtime {}: {e}", path.display()))
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .unwrap_or_else(|e| panic!("mtime {}: {e}", path.display()))
 }
 
 /// `SystemTime` from a Unix timestamp.
@@ -171,7 +189,9 @@ fn plenty(_p: &Path) -> io::Result<u64> {
 
 /// An environment with unlimited free space.
 pub fn env_plenty() -> ExtractEnv<'static> {
-    ExtractEnv { free_space: &plenty }
+    ExtractEnv {
+        free_space: &plenty,
+    }
 }
 
 pub fn no_resolutions() -> HashMap<String, Resolution> {
@@ -180,7 +200,14 @@ pub fn no_resolutions() -> HashMap<String, Resolution> {
 
 /// Extracts with unlimited space, no resolutions and no hooks.
 pub fn extract_simple(zip: &Path, dest: &Path, base: &Path) -> Result<ExtractResult, ArchiveError> {
-    extract(zip, dest, base, &env_plenty(), &no_resolutions(), &ExtractHooks::none())
+    extract(
+        zip,
+        dest,
+        base,
+        &env_plenty(),
+        &no_resolutions(),
+        &ExtractHooks::none(),
+    )
 }
 
 /// The error code of a run regardless of whether the implementation reports it
@@ -190,7 +217,12 @@ pub fn code_of(result: &Result<ExtractResult, ArchiveError>) -> Option<ArchiveEr
     match result {
         Err(e) => Some(e.code),
         Ok(r) if r.outcome == ExtractOutcome::Completed => None,
-        Ok(r) => Some(r.error.as_ref().map(|e| e.code).unwrap_or(ArchiveErrorCode::Unknown)),
+        Ok(r) => Some(
+            r.error
+                .as_ref()
+                .map(|e| e.code)
+                .unwrap_or(ArchiveErrorCode::Unknown),
+        ),
     }
 }
 

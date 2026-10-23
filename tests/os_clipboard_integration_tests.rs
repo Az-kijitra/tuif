@@ -1,12 +1,12 @@
 //! Integration tests for Windows Explorer clipboard interoperability (`CF_HDROP`).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use cuifiler::app::AppState;
-use cuifiler::fs_ops::os_clipboard::{
-    clear_os_clipboard, get_os_clipboard_files, set_os_clipboard_files, ClipboardEffect,
-};
 use std::fs;
 use std::sync::Mutex;
+use tuif::app::AppState;
+use tuif::fs_ops::os_clipboard::{
+    clear_os_clipboard, get_os_clipboard_files, set_os_clipboard_files, ClipboardEffect,
+};
 
 static TEST_CLIPBOARD_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -57,7 +57,7 @@ fn test_tuif_paste_imports_from_os_clipboard_copy() {
     fs::write(&ext_file, "copied from explorer").unwrap();
 
     // Simulate Windows Explorer copying the file
-    let ok = set_os_clipboard_files(&[ext_file.clone()], ClipboardEffect::Copy);
+    let ok = set_os_clipboard_files(std::slice::from_ref(&ext_file), ClipboardEffect::Copy);
     assert!(ok);
 
     let mut app = AppState::new(dest_dir.clone());
@@ -76,7 +76,10 @@ fn test_tuif_paste_imports_from_os_clipboard_copy() {
 
     let target_file = dest_dir.join("external_explorer_copy.txt");
     assert!(target_file.is_file(), "File should be pasted into dest_dir");
-    assert_eq!(fs::read_to_string(&target_file).unwrap(), "copied from explorer");
+    assert_eq!(
+        fs::read_to_string(&target_file).unwrap(),
+        "copied from explorer"
+    );
     // Source file should still exist because it was a Copy
     assert!(ext_file.is_file());
 
@@ -97,7 +100,7 @@ fn test_tuif_paste_imports_from_os_clipboard_cut() {
     fs::write(&ext_file, "cut from explorer").unwrap();
 
     // Simulate Windows Explorer cutting the file
-    let ok = set_os_clipboard_files(&[ext_file.clone()], ClipboardEffect::Move);
+    let ok = set_os_clipboard_files(std::slice::from_ref(&ext_file), ClipboardEffect::Move);
     assert!(ok);
 
     let mut app = AppState::new(dest_dir.clone());
@@ -115,10 +118,16 @@ fn test_tuif_paste_imports_from_os_clipboard_cut() {
 
     let target_file = dest_dir.join("external_explorer_cut.txt");
     assert!(target_file.is_file(), "File should be moved into dest_dir");
-    assert_eq!(fs::read_to_string(&target_file).unwrap(), "cut from explorer");
+    assert_eq!(
+        fs::read_to_string(&target_file).unwrap(),
+        "cut from explorer"
+    );
     // Source file should NO LONGER exist because it was a Move (Cut)
     assert!(!ext_file.exists(), "Source file should have been moved");
 
     // After successful move, clipboard should be cleared
-    assert!(get_os_clipboard_files().is_none(), "Clipboard should be cleared after move");
+    assert!(
+        get_os_clipboard_files().is_none(),
+        "Clipboard should be cleared after move"
+    );
 }

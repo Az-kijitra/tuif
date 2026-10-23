@@ -92,7 +92,10 @@ fn same_entity_sees_through_a_junction_alias() {
         eprintln!("SKIP: cannot create a junction/symlink here");
         return;
     }
-    assert_eq!(same_entity(&real.join("x.txt"), &link.join("x.txt")), Some(true));
+    assert_eq!(
+        same_entity(&real.join("x.txt"), &link.join("x.txt")),
+        Some(true)
+    );
     remove_dir_link(&link);
 }
 
@@ -205,7 +208,10 @@ fn nam_forward_slash_separated_input_is_split_into_components() {
     let base = tmp.path().join("exists");
     fs::create_dir(&base).unwrap();
     let with_slashes = PathBuf::from(format!("{}/new/x.txt", base.display()));
-    assert_eq!(normalize_allowing_missing(&with_slashes), Some(canon(&base).join("new").join("x.txt")));
+    assert_eq!(
+        normalize_allowing_missing(&with_slashes),
+        Some(canon(&base).join("new").join("x.txt"))
+    );
 }
 
 // A verbatim (`\\?\`) input is handled; the result agrees with canonicalize's
@@ -215,7 +221,10 @@ fn nam_forward_slash_separated_input_is_split_into_components() {
 fn nam_accepts_a_verbatim_prefixed_input() {
     let tmp = tempdir();
     let verbatim = canon(tmp.path());
-    assert!(verbatim.to_string_lossy().starts_with(r"\\?\"), "canonicalize returns verbatim paths on Windows");
+    assert!(
+        verbatim.to_string_lossy().starts_with(r"\\?\"),
+        "canonicalize returns verbatim paths on Windows"
+    );
     let got = normalize_allowing_missing(&verbatim.join("new"));
     assert_eq!(got, Some(verbatim.join("new")));
 }
@@ -249,8 +258,16 @@ fn nam_dangling_link_is_none() {
         return;
     }
     fs::remove_dir(&target).unwrap();
-    assert_eq!(normalize_allowing_missing(&link), None, "dangling link itself");
-    assert_eq!(normalize_allowing_missing(&link.join("x.txt")), None, "tail below a dangling link");
+    assert_eq!(
+        normalize_allowing_missing(&link),
+        None,
+        "dangling link itself"
+    );
+    assert_eq!(
+        normalize_allowing_missing(&link.join("x.txt")),
+        None,
+        "tail below a dangling link"
+    );
     remove_dir_link(&link);
 }
 
@@ -270,7 +287,10 @@ fn nam_resolves_a_link_in_the_existing_prefix() {
         normalize_allowing_missing(&link.join("out.zip")),
         normalize_allowing_missing(&real.join("out.zip"))
     );
-    assert_eq!(normalize_allowing_missing(&link.join("out.zip")), Some(canon(&real).join("out.zip")));
+    assert_eq!(
+        normalize_allowing_missing(&link.join("out.zip")),
+        Some(canon(&real).join("out.zip"))
+    );
     remove_dir_link(&link);
 }
 
@@ -297,7 +317,14 @@ fn nam_drive_root_with_a_missing_tail() {
         return;
     }
     let got = normalize_allowing_missing(Path::new(r"C:\rfz_definitely_missing_dir_0f3a\a.zip"));
-    assert_eq!(got, Some(canon(root).join("rfz_definitely_missing_dir_0f3a").join("a.zip")));
+    assert_eq!(
+        got,
+        Some(
+            canon(root)
+                .join("rfz_definitely_missing_dir_0f3a")
+                .join("a.zip")
+        )
+    );
     assert_eq!(normalize_allowing_missing(root), Some(canon(root)));
 }
 
@@ -305,10 +332,16 @@ fn nam_drive_root_with_a_missing_tail() {
 #[cfg(windows)]
 #[test]
 fn nam_nonexistent_drive_is_none() {
-    let missing = ('D'..='Z').rev().map(|c| format!("{c}:\\")).find(|d| !Path::new(d).exists());
+    let missing = ('D'..='Z')
+        .rev()
+        .map(|c| format!("{c}:\\"))
+        .find(|d| !Path::new(d).exists());
     let Some(drive) = missing else {
         eprintln!("SKIP: every drive letter exists");
         return;
     };
-    assert_eq!(normalize_allowing_missing(&Path::new(&drive).join("a").join("b.zip")), None);
+    assert_eq!(
+        normalize_allowing_missing(&Path::new(&drive).join("a").join("b.zip")),
+        None
+    );
 }

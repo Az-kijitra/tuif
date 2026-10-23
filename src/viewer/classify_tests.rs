@@ -25,9 +25,18 @@ const EMPTY_SAMPLE: &[u8] = &[];
 
 #[test]
 fn extension_of_r410_1_is_the_text_after_the_last_dot_lowercased() {
-    assert_eq!(extension_of(std::path::Path::new("a.tar.gz")).as_deref(), Some("gz"));
-    assert_eq!(extension_of(std::path::Path::new("README.MD")).as_deref(), Some("md"));
-    assert_eq!(extension_of(std::path::Path::new("photo.JPG")).as_deref(), Some("jpg"));
+    assert_eq!(
+        extension_of(std::path::Path::new("a.tar.gz")).as_deref(),
+        Some("gz")
+    );
+    assert_eq!(
+        extension_of(std::path::Path::new("README.MD")).as_deref(),
+        Some("md")
+    );
+    assert_eq!(
+        extension_of(std::path::Path::new("photo.JPG")).as_deref(),
+        Some("jpg")
+    );
 }
 
 #[test]
@@ -45,7 +54,10 @@ fn extension_of_r410_1_no_dot_at_all_has_no_extension() {
 #[test]
 fn extension_of_r410_1_a_dotted_hidden_file_still_yields_the_last_segment() {
     // A leading dot is not special once there is a LATER dot too.
-    assert_eq!(extension_of(std::path::Path::new(".env.local")).as_deref(), Some("local"));
+    assert_eq!(
+        extension_of(std::path::Path::new(".env.local")).as_deref(),
+        Some("local")
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -125,7 +137,10 @@ fn r412_1_the_full_control_byte_set_all_count_toward_the_ratio() {
     ];
     for b in control_bytes {
         let sample = [b, b'a', b'a', b'a', b'a'];
-        assert!(!content_is_text(&sample), "byte {b:#04x} must count as a control byte");
+        assert!(
+            !content_is_text(&sample),
+            "byte {b:#04x} must count as a control byte"
+        );
     }
 }
 
@@ -137,7 +152,11 @@ fn r412_1_the_full_control_byte_set_all_count_toward_the_ratio() {
 fn r410_step1_image_extensions_win_regardless_of_content_case_insensitive() {
     // AC-420.
     for ext in ["png", "JPG", "jpeg", "Bmp"] {
-        assert_eq!(decide_kind(Some(ext), EMPTY_SAMPLE), ViewerKind::Image, "ext={ext}");
+        assert_eq!(
+            decide_kind(Some(ext), EMPTY_SAMPLE),
+            ViewerKind::Image,
+            "ext={ext}"
+        );
     }
 }
 
@@ -145,7 +164,11 @@ fn r410_step1_image_extensions_win_regardless_of_content_case_insensitive() {
 fn r410_step2_markdown_extensions_case_insensitive() {
     // AC-420.
     for ext in ["md", "MARKDOWN"] {
-        assert_eq!(decide_kind(Some(ext), EMPTY_SAMPLE), ViewerKind::Markdown, "ext={ext}");
+        assert_eq!(
+            decide_kind(Some(ext), EMPTY_SAMPLE),
+            ViewerKind::Markdown,
+            "ext={ext}"
+        );
     }
 }
 
@@ -158,7 +181,11 @@ fn r410_step3_all_15_text_extensions_case_insensitive() {
     ];
     assert_eq!(text_exts.len(), 15);
     for ext in text_exts {
-        assert_eq!(decide_kind(Some(ext), EMPTY_SAMPLE), ViewerKind::Text, "ext={ext}");
+        assert_eq!(
+            decide_kind(Some(ext), EMPTY_SAMPLE),
+            ViewerKind::Text,
+            "ext={ext}"
+        );
         assert_eq!(
             decide_kind(Some(&ext.to_uppercase()), EMPTY_SAMPLE),
             ViewerKind::Text,
@@ -173,11 +200,17 @@ fn r410_step4_the_10_os_open_direct_list_extensions_skip_content_sniffing() {
     // AC-426: even a sample that looks perfectly like clean text is ignored;
     // the direct list always routes to OsOpen (R-414, the confirmed #9
     // exception, ISS-0123/M-1).
-    let os_open_exts = ["gif", "webp", "svg", "svgz", "ico", "tif", "tiff", "avif", "heic", "heif"];
+    let os_open_exts = [
+        "gif", "webp", "svg", "svgz", "ico", "tif", "tiff", "avif", "heic", "heif",
+    ];
     assert_eq!(os_open_exts.len(), 10);
     let text_like_sample = b"<svg xmlns='...'></svg>";
     for ext in os_open_exts {
-        assert_eq!(decide_kind(Some(ext), text_like_sample), ViewerKind::OsOpen, "ext={ext}");
+        assert_eq!(
+            decide_kind(Some(ext), text_like_sample),
+            ViewerKind::OsOpen,
+            "ext={ext}"
+        );
     }
 }
 
@@ -205,8 +238,18 @@ fn r410_1_html_is_not_special_cased_it_falls_through_to_text_sniffing() {
 fn r410_411_1_extensions_not_on_the_15_entry_list_are_never_added_back() {
     // R-411-1: cjs/tsx/jsx/css/toml/yaml/yml/xml/ini/csv are intentionally
     // absent from the fixed lists; they are classified purely by content.
-    for ext in ["cjs", "tsx", "jsx", "css", "toml", "yaml", "yml", "xml", "ini", "csv"] {
-        assert_eq!(decide_kind(Some(ext), b"plain text"), ViewerKind::Text, "ext={ext}");
-        assert_eq!(decide_kind(Some(ext), &[0u8, 1, 2]), ViewerKind::OsOpen, "ext={ext}");
+    for ext in [
+        "cjs", "tsx", "jsx", "css", "toml", "yaml", "yml", "xml", "ini", "csv",
+    ] {
+        assert_eq!(
+            decide_kind(Some(ext), b"plain text"),
+            ViewerKind::Text,
+            "ext={ext}"
+        );
+        assert_eq!(
+            decide_kind(Some(ext), &[0u8, 1, 2]),
+            ViewerKind::OsOpen,
+            "ext={ext}"
+        );
     }
 }

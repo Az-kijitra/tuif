@@ -8,8 +8,8 @@ use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
-    normalize_tree_key, tree_node_key, AppState, ClipMode, ConflictPromptData, FocusPane, OverlayMode,
-    TransferProgressState,
+    normalize_tree_key, tree_node_key, AppState, ClipMode, ConflictPromptData, FocusPane,
+    OverlayMode, TransferProgressState,
 };
 use crate::fs::query::EntryType;
 use crate::remote::profile::ConnectionProfile;
@@ -20,7 +20,10 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
 
     // Fill background if theme defines a background color
     if app.theme.bg != Color::Reset {
-        frame.render_widget(Block::default().style(Style::default().bg(app.theme.bg)), area);
+        frame.render_widget(
+            Block::default().style(Style::default().bg(app.theme.bg)),
+            area,
+        );
     }
 
     // If fullscreen Viewer overlay is active, render it across the entire screen
@@ -74,7 +77,15 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
             cursor,
             password_buffer,
         } => {
-            draw_connection_edit_modal(frame, area, *is_new, profile, *cursor, password_buffer, &app.theme);
+            draw_connection_edit_modal(
+                frame,
+                area,
+                *is_new,
+                profile,
+                *cursor,
+                password_buffer,
+                &app.theme,
+            );
         }
         OverlayMode::SortMenu { cursor } => {
             let items = vec![
@@ -87,7 +98,14 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
                 "Modified (Asc)".to_string(),
                 "Modified (Desc)".to_string(),
             ];
-            draw_popup_list(frame, area, "Sort (j/k:Move Enter:Apply Esc:Close)", &items, *cursor, &app.theme);
+            draw_popup_list(
+                frame,
+                area,
+                "Sort (j/k:Move Enter:Apply Esc:Close)",
+                &items,
+                *cursor,
+                &app.theme,
+            );
         }
         OverlayMode::ListPopup {
             title,
@@ -120,7 +138,14 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
                 let tag = if ext.is_gui { "[GUI]" } else { "[CUI]" };
                 items.push(format!("{tag} {} ({})", ext.name, ext.key_label));
             }
-            draw_popup_list(frame, area, "Action Menu (j/k/Enter/Esc)", &items, *cursor, &app.theme);
+            draw_popup_list(
+                frame,
+                area,
+                "Action Menu (j/k/Enter/Esc)",
+                &items,
+                *cursor,
+                &app.theme,
+            );
         }
         OverlayMode::MenuBar { cat_idx, item_idx } => {
             draw_menubar_dropdown(frame, area, app, *cat_idx, *item_idx);
@@ -141,12 +166,7 @@ fn draw_menu_bar(frame: &mut Frame, area: Rect, app: &AppState) {
         OverlayMode::MenuBar { cat_idx, .. } => Some(cat_idx),
         _ => None,
     };
-    let labels = [
-        " File(F) ",
-        " Edit(E) ",
-        " View(V) ",
-        " Go(G) ",
-    ];
+    let labels = [" File(F) ", " Edit(E) ", " View(V) ", " Go(G) "];
     let mut spans = Vec::new();
     for (i, label) in labels.iter().enumerate() {
         let style = if active_cat == Some(i) {
@@ -160,7 +180,10 @@ fn draw_menu_bar(frame: &mut Frame, area: Rect, app: &AppState) {
                 .bg(app.theme.status_bar_bg)
         };
         spans.push(Span::styled(*label, style));
-        spans.push(Span::styled(" ", Style::default().bg(app.theme.status_bar_bg)));
+        spans.push(Span::styled(
+            " ",
+            Style::default().bg(app.theme.status_bar_bg),
+        ));
     }
     spans.push(Span::styled(
         "  tuif",
@@ -180,10 +203,17 @@ fn draw_path_and_search_bar(frame: &mut Frame, area: Rect, app: &AppState) {
                 .fg(app.theme.tree_current)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(app.active_display_path(), Style::default().fg(app.theme.file)),
+        Span::styled(
+            app.active_display_path(),
+            Style::default().fg(app.theme.file),
+        ),
     ])];
     if !app.search_query.is_empty() {
-        let mode_tag = if app.search_regex { "[Regex]" } else { "[Substr]" };
+        let mode_tag = if app.search_regex {
+            "[Regex]"
+        } else {
+            "[Substr]"
+        };
         lines.push(Line::from(vec![
             Span::styled(
                 format!(" Search {mode_tag}: "),
@@ -191,7 +221,10 @@ fn draw_path_and_search_bar(frame: &mut Frame, area: Rect, app: &AppState) {
                     .fg(app.theme.selected)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(app.search_query.clone(), Style::default().fg(app.theme.file)),
+            Span::styled(
+                app.search_query.clone(),
+                Style::default().fg(app.theme.file),
+            ),
         ]));
     }
     let p = Paragraph::new(lines).style(Style::default().bg(app.theme.bg));
@@ -236,11 +269,12 @@ fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
         .skip(start_offset)
         .take(page_size)
         .map(|(i, node)| {
-            let is_current_dir = if let (Some(session), Some(rdir)) = (&app.remote_session, &app.remote_dir) {
-                tree_node_key(node) == format!("remote:{}:{rdir}", session.profile.id)
-            } else {
-                node.remote.is_none() && normalize_tree_key(&node.path) == current_dir_key
-            };
+            let is_current_dir =
+                if let (Some(session), Some(rdir)) = (&app.remote_session, &app.remote_dir) {
+                    tree_node_key(node) == format!("remote:{}:{rdir}", session.profile.id)
+                } else {
+                    node.remote.is_none() && normalize_tree_key(&node.path) == current_dir_key
+                };
             let indent = "  ".repeat(node.depth);
             let caret = if node.expanded { "▾ " } else { "▸ " };
             let text = format!("{indent}{caret}{}", node.name);
@@ -313,7 +347,11 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
 
     if app.visible_indices.is_empty() {
         let empty = Paragraph::new("  No items")
-            .style(Style::default().fg(app.theme.border_inactive).bg(app.theme.bg))
+            .style(
+                Style::default()
+                    .fg(app.theme.border_inactive)
+                    .bg(app.theme.bg),
+            )
             .block(block);
         frame.render_widget(empty, area);
         return;
@@ -349,7 +387,9 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
         if app.ui_state.ui_show_time {
             reserved_cols += 21;
         }
-        let max_name_width = (table_rect.width as usize).saturating_sub(reserved_cols).max(8);
+        let max_name_width = (table_rect.width as usize)
+            .saturating_sub(reserved_cols)
+            .max(8);
 
         let col_start_vis = col_idx * rows_per_col;
         let mut rows = Vec::new();
@@ -365,7 +405,10 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
             let is_selected = app.selected_paths.contains(&entry.path);
 
             let mark = if is_selected { "*" } else { " " };
-            let name_col = format!("{mark} {}", truncate_display_width(&entry.name, max_name_width));
+            let name_col = format!(
+                "{mark} {}",
+                truncate_display_width(&entry.name, max_name_width)
+            );
             let size_col = if entry.entry_type == EntryType::Dir {
                 "<DIR>".to_string()
             } else {
@@ -422,7 +465,14 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
         if has_right_neighbor && col_rect.width > 2 {
             let sep_x = col_rect.x + col_rect.width - 1;
             let sep_lines: Vec<Line> = (0..col_rect.height)
-                .map(|_| Line::from(Span::styled("│", Style::default().fg(app.theme.border_inactive).bg(app.theme.bg))))
+                .map(|_| {
+                    Line::from(Span::styled(
+                        "│",
+                        Style::default()
+                            .fg(app.theme.border_inactive)
+                            .bg(app.theme.bg),
+                    ))
+                })
                 .collect();
             frame.render_widget(
                 Paragraph::new(sep_lines).style(Style::default().bg(app.theme.bg)),
@@ -506,22 +556,45 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
             let is_current = match_cursor.and_then(|c| matching_lines.get(c)).copied() == Some(idx);
             let mut spans = if active_preview {
                 if is_current {
-                    vec![Span::styled("▶ ", Style::default().fg(app.theme.selected).add_modifier(Modifier::BOLD))]
+                    vec![Span::styled(
+                        "▶ ",
+                        Style::default()
+                            .fg(app.theme.selected)
+                            .add_modifier(Modifier::BOLD),
+                    )]
                 } else if is_match {
-                    vec![Span::styled("● ", Style::default().fg(app.theme.tree_cursor).add_modifier(Modifier::BOLD))]
+                    vec![Span::styled(
+                        "● ",
+                        Style::default()
+                            .fg(app.theme.tree_cursor)
+                            .add_modifier(Modifier::BOLD),
+                    )]
                 } else {
                     vec![Span::raw("  ")]
                 }
             } else {
                 let gutter_style = if is_current {
-                    Style::default().fg(app.theme.selected).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(app.theme.selected)
+                        .add_modifier(Modifier::BOLD)
                 } else if is_match {
-                    Style::default().fg(app.theme.tree_cursor).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(app.theme.tree_cursor)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(app.theme.border_inactive)
                 };
-                let marker = if is_current { "▶" } else if is_match { "●" } else { "│" };
-                vec![Span::styled(format!("{:>5} {marker} ", idx + 1), gutter_style)]
+                let marker = if is_current {
+                    "▶"
+                } else if is_match {
+                    "●"
+                } else {
+                    "│"
+                };
+                vec![Span::styled(
+                    format!("{:>5} {marker} ", idx + 1),
+                    gutter_style,
+                )]
             };
             spans.extend(crate::viewer::highlight::parse_ansi_line_with_scroll(
                 line, scroll_x,
@@ -558,15 +631,37 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
             scroll_y + 1,
             lines.len().max(1)
         ));
-    frame.render_widget(Paragraph::new(visible_lines).style(Style::default().bg(app.theme.bg)).block(block), chunks[0]);
+    frame.render_widget(
+        Paragraph::new(visible_lines)
+            .style(Style::default().bg(app.theme.bg))
+            .block(block),
+        chunks[0],
+    );
 
     if let Some(ref input) = search_input {
         let prompt_line = Line::from(vec![
-            Span::styled(" /", Style::default().fg(app.theme.menu_bar_active_fg).bg(app.theme.menu_bar_active_bg).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{input}█"), Style::default().fg(app.theme.cursor_fg).bg(app.theme.cursor_bg)),
-            Span::styled("  (Enter:Search, Esc:Cancel)", Style::default().fg(app.theme.status_bar_fg).bg(app.theme.status_bar_bg)),
+            Span::styled(
+                " /",
+                Style::default()
+                    .fg(app.theme.menu_bar_active_fg)
+                    .bg(app.theme.menu_bar_active_bg)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{input}█"),
+                Style::default()
+                    .fg(app.theme.cursor_fg)
+                    .bg(app.theme.cursor_bg),
+            ),
+            Span::styled(
+                "  (Enter:Search, Esc:Cancel)",
+                Style::default()
+                    .fg(app.theme.status_bar_fg)
+                    .bg(app.theme.status_bar_bg),
+            ),
         ]);
-        let search_footer = Paragraph::new(prompt_line).style(Style::default().bg(app.theme.status_bar_bg));
+        let search_footer =
+            Paragraph::new(prompt_line).style(Style::default().bg(app.theme.status_bar_bg));
         frame.render_widget(search_footer, chunks[1]);
     } else {
         let footer_text = if is_markdown {
@@ -574,13 +669,22 @@ fn draw_viewer(frame: &mut Frame, area: Rect, app: &AppState) {
         } else {
             " j/k:Scroll  Ctrl+d/u:Page  g/G:Top/Bottom  h/l:Horiz  /:Search  n/N:Next/Prev  q/Esc:Close"
         };
-        let footer = Paragraph::new(footer_text)
-            .style(Style::default().fg(app.theme.cursor_fg).bg(app.theme.cursor_bg));
+        let footer = Paragraph::new(footer_text).style(
+            Style::default()
+                .fg(app.theme.cursor_fg)
+                .bg(app.theme.cursor_bg),
+        );
         frame.render_widget(footer, chunks[1]);
     }
 }
 
-fn draw_input_modal(frame: &mut Frame, area: Rect, title: &str, buffer: &str, theme: &crate::theme::Theme) {
+fn draw_input_modal(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    buffer: &str,
+    theme: &crate::theme::Theme,
+) {
     let popup = centered_rect(70, 5, area);
     frame.render_widget(Clear, popup);
     let popup_bg = if theme.bg != Color::Reset {
@@ -821,10 +925,38 @@ fn draw_menubar_dropdown(
             "Search (/)".to_string(),
         ],
         2 => vec![
-            format!("Tree [{}] (t / Ctrl+Shift+B)", if app.ui_state.ui_show_tree { "✓" } else { " " }),
-            format!("Hidden Files [{}] (. / Ctrl+H)", if app.ui_state.ui_show_hidden { "✓" } else { " " }),
-            format!("Size Column [{}] (Ctrl+Shift+S)", if app.ui_state.ui_show_size { "✓" } else { " " }),
-            format!("Modified Column [{}] (Ctrl+Shift+T)", if app.ui_state.ui_show_time { "✓" } else { " " }),
+            format!(
+                "Tree [{}] (t / Ctrl+Shift+B)",
+                if app.ui_state.ui_show_tree {
+                    "✓"
+                } else {
+                    " "
+                }
+            ),
+            format!(
+                "Hidden Files [{}] (. / Ctrl+H)",
+                if app.ui_state.ui_show_hidden {
+                    "✓"
+                } else {
+                    " "
+                }
+            ),
+            format!(
+                "Size Column [{}] (Ctrl+Shift+S)",
+                if app.ui_state.ui_show_size {
+                    "✓"
+                } else {
+                    " "
+                }
+            ),
+            format!(
+                "Modified Column [{}] (Ctrl+Shift+T)",
+                if app.ui_state.ui_show_time {
+                    "✓"
+                } else {
+                    " "
+                }
+            ),
             "Sort... (s)".to_string(),
         ],
         _ => vec![
@@ -948,16 +1080,23 @@ fn draw_password_prompt_modal(
 
     let lines = vec![
         Line::from(vec![
-            Span::styled(" Password: ", Style::default().fg(theme.selected).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Password: ",
+                Style::default()
+                    .fg(theme.selected)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(masked, Style::default().fg(theme.file)),
             Span::styled("█", Style::default().fg(theme.tree_cursor)),
         ]),
-        Line::from(vec![
-            Span::styled(format!(" {save_tag} (Tab to toggle)"), Style::default().fg(theme.border_inactive)),
-        ]),
-        Line::from(vec![
-            Span::styled(" [Enter] Connect  [Esc] Cancel", Style::default().fg(theme.border_inactive)),
-        ]),
+        Line::from(vec![Span::styled(
+            format!(" {save_tag} (Tab to toggle)"),
+            Style::default().fg(theme.border_inactive),
+        )]),
+        Line::from(vec![Span::styled(
+            " [Enter] Connect  [Esc] Cancel",
+            Style::default().fg(theme.border_inactive),
+        )]),
     ];
 
     let block = Block::default()
@@ -965,15 +1104,15 @@ fn draw_password_prompt_modal(
         .border_style(Style::default().fg(theme.border))
         .style(Style::default().bg(popup_bg))
         .title(format!(" {title} "));
-    frame.render_widget(Paragraph::new(lines).style(Style::default().bg(popup_bg)).block(block), popup);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().bg(popup_bg))
+            .block(block),
+        popup,
+    );
 }
 
-fn draw_host_key_confirm_modal(
-    frame: &mut Frame,
-    area: Rect,
-    endpoint: &str,
-    fingerprint: &str,
-) {
+fn draw_host_key_confirm_modal(frame: &mut Frame, area: Rect, endpoint: &str, fingerprint: &str) {
     let width = 72.min(area.width.saturating_sub(4)).max(40);
     let height = 9;
     let x = (area.width.saturating_sub(width)) / 2;
@@ -982,12 +1121,31 @@ fn draw_host_key_confirm_modal(
     frame.render_widget(Clear, popup);
 
     let lines = vec![
-        Line::from(Span::styled("Unknown host key for:", Style::default().fg(Color::Yellow))),
-        Line::from(Span::styled(format!("  {endpoint}"), Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("Fingerprint (SHA256):", Style::default().fg(Color::Yellow))),
-        Line::from(Span::styled(format!("  {fingerprint}"), Style::default().fg(Color::Cyan))),
+        Line::from(Span::styled(
+            "Unknown host key for:",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            format!("  {endpoint}"),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "Fingerprint (SHA256):",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            format!("  {fingerprint}"),
+            Style::default().fg(Color::Cyan),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Trust this host? (y/Enter: Trust, n/Esc: Cancel)", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "Trust this host? (y/Enter: Trust, n/Esc: Cancel)",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )),
     ];
 
     let block = Block::default()
@@ -997,12 +1155,7 @@ fn draw_host_key_confirm_modal(
     frame.render_widget(Paragraph::new(lines).block(block), popup);
 }
 
-fn draw_connection_manager_modal(
-    frame: &mut Frame,
-    area: Rect,
-    app: &AppState,
-    cursor: usize,
-) {
+fn draw_connection_manager_modal(frame: &mut Frame, area: Rect, app: &AppState, cursor: usize) {
     let width = 70.min(area.width.saturating_sub(4)).max(40);
     let height = 14.min(area.height.saturating_sub(4)).max(8);
     let x = (area.width.saturating_sub(width)) / 2;
@@ -1021,8 +1174,10 @@ fn draw_connection_manager_modal(
     };
 
     let items: Vec<ListItem> = if app.remote_profiles.is_empty() {
-        vec![ListItem::new("  (No profiles configured. Press 'a' to add new profile)")
-            .style(Style::default().fg(app.theme.border_inactive).bg(popup_bg))]
+        vec![
+            ListItem::new("  (No profiles configured. Press 'a' to add new profile)")
+                .style(Style::default().fg(app.theme.border_inactive).bg(popup_bg)),
+        ]
     } else {
         app.remote_profiles
             .iter()
@@ -1059,14 +1214,12 @@ fn draw_connection_manager_modal(
     );
     frame.render_widget(list, chunks[0]);
 
-    let help = Paragraph::new(Line::from(vec![
-        Span::styled(
-            " [Enter] Connect  [a] Add  [e] Edit  [d] Delete  [Esc] Close ",
-            Style::default()
-                .fg(app.theme.status_bar_fg)
-                .bg(app.theme.status_bar_bg),
-        ),
-    ]))
+    let help = Paragraph::new(Line::from(vec![Span::styled(
+        " [Enter] Connect  [a] Add  [e] Edit  [d] Delete  [Esc] Close ",
+        Style::default()
+            .fg(app.theme.status_bar_fg)
+            .bg(app.theme.status_bar_bg),
+    )]))
     .style(Style::default().bg(popup_bg))
     .block(
         Block::default()
@@ -1117,18 +1270,26 @@ fn draw_connection_edit_modal(
         .map(|(i, (label, val))| {
             let is_cur = i == cursor;
             let label_style = if is_cur {
-                Style::default().fg(theme.selected).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.selected)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.border_inactive)
             };
             let val_style = if is_cur {
-                Style::default().fg(theme.cursor_fg).bg(theme.selected).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.cursor_fg)
+                    .bg(theme.selected)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.file)
             };
             Line::from(vec![
                 Span::styled(format!("  {:14}: ", label), label_style),
-                Span::styled(format!(" {} ", if val.is_empty() { "(empty)" } else { val }), val_style),
+                Span::styled(
+                    format!(" {} ", if val.is_empty() { "(empty)" } else { val }),
+                    val_style,
+                ),
             ])
         })
         .collect();
@@ -1149,7 +1310,12 @@ fn draw_connection_edit_modal(
         .style(Style::default().bg(popup_bg))
         .title(format!("{title}(Tab/Down:Next, Enter:Save, Esc:Cancel) "));
 
-    frame.render_widget(Paragraph::new(lines).style(Style::default().bg(popup_bg)).block(block), popup);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().bg(popup_bg))
+            .block(block),
+        popup,
+    );
 }
 
 fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferProgressState) {
@@ -1167,9 +1333,13 @@ fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferP
     frame.render_widget(Clear, modal_rect);
 
     let border_style = if state.is_cancelling {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     };
 
     let title_text = format!(" {} ", state.title);
@@ -1201,12 +1371,19 @@ fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferP
     let cur_fname = if state.current_file.is_empty() {
         "Preparing transfer...".to_string()
     } else {
-        format!("File: {}", truncate_display_width(&state.current_file, (inner.width as usize).saturating_sub(6)))
+        format!(
+            "File: {}",
+            truncate_display_width(
+                &state.current_file,
+                (inner.width as usize).saturating_sub(6)
+            )
+        )
     };
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(cur_fname, Style::default().fg(Color::White)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            cur_fname,
+            Style::default().fg(Color::White),
+        )])),
         chunks[0],
     );
 
@@ -1230,7 +1407,12 @@ fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferP
     let cur_gauge = Gauge::default()
         .gauge_style(Style::default().fg(Color::Cyan).bg(Color::DarkGray))
         .ratio(cur_ratio)
-        .label(Span::styled(cur_label, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)));
+        .label(Span::styled(
+            cur_label,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ));
     frame.render_widget(cur_gauge, chunks[1]);
 
     // 3. Overall label
@@ -1250,9 +1432,10 @@ fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferP
     };
     let overall_text = format!("Total: {total_files_str} ({total_bytes_str})");
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(overall_text, Style::default().fg(Color::White)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            overall_text,
+            Style::default().fg(Color::White),
+        )])),
         chunks[3],
     );
 
@@ -1269,18 +1452,31 @@ fn draw_transfer_progress_modal(frame: &mut Frame, area: Rect, state: &TransferP
     let overall_gauge = Gauge::default()
         .gauge_style(Style::default().fg(Color::Green).bg(Color::DarkGray))
         .ratio(overall_ratio)
-        .label(Span::styled(overall_label, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)));
+        .label(Span::styled(
+            overall_label,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ));
     frame.render_widget(overall_gauge, chunks[4]);
 
     // 5. Cancel note
     let cancel_line = if state.is_cancelling {
-        Line::from(vec![
-            Span::styled(" Cancelling transfer... Please wait ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ])
+        Line::from(vec![Span::styled(
+            " Cancelling transfer... Please wait ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )])
     } else {
         Line::from(vec![
             Span::styled(" Press ", Style::default().fg(Color::DarkGray)),
-            Span::styled("[Esc]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[Esc]",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" to cancel ", Style::default().fg(Color::DarkGray)),
         ])
     };
@@ -1301,7 +1497,9 @@ fn draw_conflict_confirm_modal(frame: &mut Frame, area: Rect, prompt: &ConflictP
 
     frame.render_widget(Clear, modal_rect);
 
-    let border_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let border_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(border_style)
@@ -1326,17 +1524,21 @@ fn draw_conflict_confirm_modal(frame: &mut Frame, area: Rect, prompt: &ConflictP
         .split(inner);
 
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("Destination file already exists:", Style::default().fg(Color::White)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            "Destination file already exists:",
+            Style::default().fg(Color::White),
+        )])),
         chunks[0],
     );
 
     let display_fname = truncate_display_width(&prompt.file_name, inner.width as usize);
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(format!("  {display_fname}"), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            format!("  {display_fname}"),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )])),
         chunks[1],
     );
 
@@ -1353,7 +1555,10 @@ fn draw_conflict_confirm_modal(frame: &mut Frame, area: Rect, prompt: &ConflictP
         if idx == prompt.cursor {
             btn_spans.push(Span::styled(
                 label,
-                Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ));
         } else {
             btn_spans.push(Span::styled(
@@ -1366,9 +1571,10 @@ fn draw_conflict_confirm_modal(frame: &mut Frame, area: Rect, prompt: &ConflictP
     frame.render_widget(Paragraph::new(Line::from(btn_spans)), chunks[3]);
 
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("Left/Right/Tab: Select | Enter: Confirm | o/s/a/k/Esc: Quick key", Style::default().fg(Color::DarkGray)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            "Left/Right/Tab: Select | Enter: Confirm | o/s/a/k/Esc: Quick key",
+            Style::default().fg(Color::DarkGray),
+        )])),
         chunks[4],
     );
 }
@@ -1415,7 +1621,11 @@ mod tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("README.md"), b"# Title\n\n- item 1\n- item 2\n").unwrap();
+        std::fs::write(
+            tmp.path().join("README.md"),
+            b"# Title\n\n- item 1\n- item 2\n",
+        )
+        .unwrap();
 
         let mut app = AppState::new(tmp.path().to_path_buf());
         app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -1457,9 +1667,9 @@ mod tests {
 
     #[test]
     fn transfer_progress_modal_renders_correctly() {
+        use crate::app::ActiveTransfer;
         use std::sync::atomic::AtomicBool;
         use std::sync::{mpsc, Arc};
-        use crate::app::ActiveTransfer;
 
         let tmp = tempfile::tempdir().unwrap();
         let mut app = AppState::new(tmp.path().to_path_buf());
@@ -1504,9 +1714,9 @@ mod tests {
 
     #[test]
     fn conflict_confirm_modal_renders_choices_and_filename() {
+        use crate::app::{ActiveTransfer, ConflictPromptData};
         use std::sync::atomic::AtomicBool;
         use std::sync::{mpsc, Arc};
-        use crate::app::{ActiveTransfer, ConflictPromptData};
 
         let tmp = tempfile::tempdir().unwrap();
         let mut app = AppState::new(tmp.path().to_path_buf());

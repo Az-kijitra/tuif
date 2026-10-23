@@ -82,7 +82,11 @@ fn decode_utf8_tail_aware(bytes: &[u8], truncated: bool) -> Option<String> {
             // exactly at the end of `bytes` (would be valid with more input).
             if truncated && e.error_len().is_none() {
                 let valid_up_to = e.valid_up_to();
-                Some(std::str::from_utf8(&bytes[..valid_up_to]).expect("valid_up_to is always a UTF-8 boundary").to_string())
+                Some(
+                    std::str::from_utf8(&bytes[..valid_up_to])
+                        .expect("valid_up_to is always a UTF-8 boundary")
+                        .to_string(),
+                )
             } else {
                 None
             }
@@ -98,7 +102,11 @@ fn decode_utf8_tail_aware(bytes: &[u8], truncated: bool) -> Option<String> {
 /// uniformly. When `truncated` is false, decodes as the final/only chunk, so
 /// the SAME malformed tail becomes U+FFFD (R-450-4), matching the ordinary
 /// WHATWG decode algorithm.
-fn decode_with_encoding(encoding: &'static encoding_rs::Encoding, bytes: &[u8], truncated: bool) -> String {
+fn decode_with_encoding(
+    encoding: &'static encoding_rs::Encoding,
+    bytes: &[u8],
+    truncated: bool,
+) -> String {
     if truncated {
         let mut decoder = encoding.new_decoder_without_bom_handling();
         let mut output = String::with_capacity(bytes.len());
@@ -112,19 +120,28 @@ fn decode_with_encoding(encoding: &'static encoding_rs::Encoding, bytes: &[u8], 
 
 fn decode_encoding(bytes: &[u8], truncated: bool) -> (EncodingLabel, String) {
     if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
-        let content =
-            decode_utf8_tail_aware(rest, truncated).unwrap_or_else(|| String::from_utf8_lossy(rest).into_owned());
+        let content = decode_utf8_tail_aware(rest, truncated)
+            .unwrap_or_else(|| String::from_utf8_lossy(rest).into_owned());
         return (EncodingLabel::Utf8Bom, content);
     }
     if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
-        return (EncodingLabel::Utf16Le, decode_with_encoding(encoding_rs::UTF_16LE, rest, truncated));
+        return (
+            EncodingLabel::Utf16Le,
+            decode_with_encoding(encoding_rs::UTF_16LE, rest, truncated),
+        );
     }
     if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
-        return (EncodingLabel::Utf16Be, decode_with_encoding(encoding_rs::UTF_16BE, rest, truncated));
+        return (
+            EncodingLabel::Utf16Be,
+            decode_with_encoding(encoding_rs::UTF_16BE, rest, truncated),
+        );
     }
     match decode_utf8_tail_aware(bytes, truncated) {
         Some(content) => (EncodingLabel::Utf8, content),
-        None => (EncodingLabel::ShiftJis, decode_with_encoding(encoding_rs::SHIFT_JIS, bytes, truncated)),
+        None => (
+            EncodingLabel::ShiftJis,
+            decode_with_encoding(encoding_rs::SHIFT_JIS, bytes, truncated),
+        ),
     }
 }
 
@@ -205,7 +222,9 @@ pub fn truncation_message(original_size_bytes: u64, truncated_by_size: bool) -> 
     }
     let mib = ceil_to_one_decimal_mib(original_size_bytes);
     let bytes_str = format_with_commas(original_size_bytes);
-    Some(format!("ファイルサイズ {mib:.1} MiB({bytes_str} バイト)のうち先頭 2 MiB のみ表示しています"))
+    Some(format!(
+        "ファイルサイズ {mib:.1} MiB({bytes_str} バイト)のうち先頭 2 MiB のみ表示しています"
+    ))
 }
 
 // ---------------------------------------------------------------------
@@ -219,7 +238,8 @@ pub fn truncation_message(original_size_bytes: u64, truncated_by_size: bool) -> 
 pub fn decode(bytes: &[u8], truncated_by_size: bool) -> TextPayload {
     let (encoding, content) = decode_encoding(bytes, truncated_by_size);
     let normalized = normalize_newlines(&content);
-    let (final_content, truncated_by_lines, line_count) = truncate_to_max_lines(normalized, MAX_TEXT_LINES);
+    let (final_content, truncated_by_lines, line_count) =
+        truncate_to_max_lines(normalized, MAX_TEXT_LINES);
     TextPayload {
         content: final_content,
         encoding,

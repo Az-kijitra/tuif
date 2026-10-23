@@ -41,7 +41,11 @@ pub fn crc32(data: &[u8]) -> u32 {
     for &byte in data {
         crc ^= byte as u32;
         for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
         }
     }
     !crc
@@ -103,7 +107,14 @@ pub struct Entry {
 
 impl Entry {
     fn base(name: &[u8], method: u16, payload: Vec<u8>, uncompressed: u64, crc: u32) -> Entry {
-        let flags = if std::str::from_utf8(name).map(|s| !s.is_ascii()).unwrap_or(false) { FLAG_UTF8 } else { 0 };
+        let flags = if std::str::from_utf8(name)
+            .map(|s| !s.is_ascii())
+            .unwrap_or(false)
+        {
+            FLAG_UTF8
+        } else {
+            0
+        };
         Entry {
             name: name.to_vec(),
             local_name: None,
@@ -125,12 +136,24 @@ impl Entry {
 
     /// Deflate entry (stored blocks). Non-ASCII UTF-8 names get bit 11.
     pub fn file(name: &str, data: &[u8]) -> Entry {
-        Entry::base(name.as_bytes(), METHOD_DEFLATE, deflate_stored(data), data.len() as u64, crc32(data))
+        Entry::base(
+            name.as_bytes(),
+            METHOD_DEFLATE,
+            deflate_stored(data),
+            data.len() as u64,
+            crc32(data),
+        )
     }
 
     /// Stored entry.
     pub fn stored(name: &str, data: &[u8]) -> Entry {
-        Entry::base(name.as_bytes(), METHOD_STORED, data.to_vec(), data.len() as u64, crc32(data))
+        Entry::base(
+            name.as_bytes(),
+            METHOD_STORED,
+            data.to_vec(),
+            data.len() as u64,
+            crc32(data),
+        )
     }
 
     /// Directory entry (a trailing `/` is appended when missing).
@@ -162,7 +185,9 @@ impl Entry {
             e.flags |= FLAG_ENCRYPTED;
         }
         // 0x9901: vendor version 2, "AE", strength 3 (256 bit), real method 8.
-        let extra = vec![0x01, 0x99, 0x07, 0x00, 0x02, 0x00, b'A', b'E', 0x03, 0x08, 0x00];
+        let extra = vec![
+            0x01, 0x99, 0x07, 0x00, 0x02, 0x00, b'A', b'E', 0x03, 0x08, 0x00,
+        ];
         e.extra_central = extra.clone();
         e.extra_local = extra;
         e
@@ -172,7 +197,13 @@ impl Entry {
     /// whose data is `compressed` zero bytes (physically consistent, content
     /// garbage): for L-2 / L-5 style tests that never decompress.
     pub fn declared(name: &str, method: u16, uncompressed: u64, compressed: u64) -> Entry {
-        let mut e = Entry::base(name.as_bytes(), method, vec![0u8; compressed as usize], uncompressed, 0);
+        let mut e = Entry::base(
+            name.as_bytes(),
+            method,
+            vec![0u8; compressed as usize],
+            uncompressed,
+            0,
+        );
         e.declared_compressed = compressed;
         e
     }
@@ -248,7 +279,9 @@ impl Entry {
     }
 
     fn needs_zip64(&self) -> bool {
-        self.force_zip64 || self.declared_uncompressed >= 0xFFFF_FFFF || self.declared_compressed >= 0xFFFF_FFFF
+        self.force_zip64
+            || self.declared_uncompressed >= 0xFFFF_FFFF
+            || self.declared_compressed >= 0xFFFF_FFFF
     }
 }
 
@@ -350,8 +383,22 @@ impl ZipBuilder {
             put16(&mut out, e.dos_time);
             put16(&mut out, e.dos_date);
             put32(&mut out, e.crc32);
-            put32(&mut out, if zip64 { 0xFFFF_FFFF } else { e.declared_compressed as u32 });
-            put32(&mut out, if zip64 { 0xFFFF_FFFF } else { e.declared_uncompressed as u32 });
+            put32(
+                &mut out,
+                if zip64 {
+                    0xFFFF_FFFF
+                } else {
+                    e.declared_compressed as u32
+                },
+            );
+            put32(
+                &mut out,
+                if zip64 {
+                    0xFFFF_FFFF
+                } else {
+                    e.declared_uncompressed as u32
+                },
+            );
             put16(&mut out, local_name.len() as u16);
             put16(&mut out, extra.len() as u16);
             out.extend_from_slice(local_name);
@@ -378,8 +425,22 @@ impl ZipBuilder {
             put16(&mut out, e.dos_time);
             put16(&mut out, e.dos_date);
             put32(&mut out, e.crc32);
-            put32(&mut out, if zip64 { 0xFFFF_FFFF } else { e.declared_compressed as u32 });
-            put32(&mut out, if zip64 { 0xFFFF_FFFF } else { e.declared_uncompressed as u32 });
+            put32(
+                &mut out,
+                if zip64 {
+                    0xFFFF_FFFF
+                } else {
+                    e.declared_compressed as u32
+                },
+            );
+            put32(
+                &mut out,
+                if zip64 {
+                    0xFFFF_FFFF
+                } else {
+                    e.declared_uncompressed as u32
+                },
+            );
             put16(&mut out, e.name.len() as u16);
             put16(&mut out, extra.len() as u16);
             put16(&mut out, 0); // comment length
@@ -417,8 +478,22 @@ impl ZipBuilder {
         put16(&mut out, self.cd_disk);
         put16(&mut out, if zip64_eocd { 0xFFFF } else { this_disk as u16 });
         put16(&mut out, if zip64_eocd { 0xFFFF } else { total as u16 });
-        put32(&mut out, if zip64_eocd { 0xFFFF_FFFF } else { cd_size as u32 });
-        put32(&mut out, if zip64_eocd { 0xFFFF_FFFF } else { cd_start as u32 });
+        put32(
+            &mut out,
+            if zip64_eocd {
+                0xFFFF_FFFF
+            } else {
+                cd_size as u32
+            },
+        );
+        put32(
+            &mut out,
+            if zip64_eocd {
+                0xFFFF_FFFF
+            } else {
+                cd_start as u32
+            },
+        );
         put16(&mut out, self.comment.len() as u16);
         out.extend_from_slice(&self.comment);
         out
@@ -427,7 +502,8 @@ impl ZipBuilder {
     /// Writes the archive to `dir/name` and returns the path.
     pub fn write_to(&self, dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
-        std::fs::write(&path, self.build()).unwrap_or_else(|e| panic!("write fixture {}: {e}", path.display()));
+        std::fs::write(&path, self.build())
+            .unwrap_or_else(|e| panic!("write fixture {}: {e}", path.display()));
         path
     }
 }
@@ -478,14 +554,21 @@ pub fn parse_central_directory(bytes: &[u8]) -> Vec<CdEntry> {
     let mut total = rd16(bytes, eocd + 10) as u64;
     let mut cd_offset = rd32(bytes, eocd + 16) as u64;
     if total == 0xFFFF || cd_offset == 0xFFFF_FFFF {
-        let rec = (0..eocd).rev().find(|&i| rd32(bytes, i) == 0x0606_4b50).expect("ZIP64 EOCD record");
+        let rec = (0..eocd)
+            .rev()
+            .find(|&i| rd32(bytes, i) == 0x0606_4b50)
+            .expect("ZIP64 EOCD record");
         total = rd64(bytes, rec + 32);
         cd_offset = rd64(bytes, rec + 48);
     }
     let mut at = cd_offset as usize;
     let mut out = Vec::new();
     for _ in 0..total {
-        assert_eq!(rd32(bytes, at), 0x0201_4b50, "central directory signature at {at}");
+        assert_eq!(
+            rd32(bytes, at),
+            0x0201_4b50,
+            "central directory signature at {at}"
+        );
         let name_len = rd16(bytes, at + 28) as usize;
         let extra_len = rd16(bytes, at + 30) as usize;
         let comment_len = rd16(bytes, at + 32) as usize;

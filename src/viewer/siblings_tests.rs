@@ -48,7 +48,10 @@ fn compare_names_identical_strings_are_equal() {
 // ---------------------------------------------------------------------
 
 fn names_of(paths: &[std::path::PathBuf]) -> Vec<String> {
-    paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
+    paths
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect()
 }
 
 #[test]
@@ -64,7 +67,10 @@ fn ac490_files_are_ordered_by_name_hidden_files_included_directories_excluded() 
     let names = names_of(&list);
 
     assert_eq!(names, vec![".hidden", "a.txt", "B.txt", "c.png"]);
-    assert!(!names.contains(&"sub".to_string()), "directories must be excluded (R-491)");
+    assert!(
+        !names.contains(&"sub".to_string()),
+        "directories must be excluded (R-491)"
+    );
 }
 
 // Test fix (code-generator, 2026-09-27): the original fixture also created

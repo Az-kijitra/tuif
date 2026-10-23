@@ -28,7 +28,12 @@ pub fn read(path: &Path) -> String {
 pub fn names(dir: &Path) -> Vec<String> {
     let mut out: Vec<String> = fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()))
-        .map(|e| e.expect("dir entry").file_name().to_string_lossy().into_owned())
+        .map(|e| {
+            e.expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     out.sort();
     out
@@ -74,6 +79,10 @@ pub fn remove_dir_link(link: &Path) {
 /// this names the same entry with a different spelling; R-37-1, AC-78).
 #[cfg(windows)]
 pub fn with_last_component_uppercased(path: &Path) -> PathBuf {
-    let name = path.file_name().expect("file name").to_string_lossy().to_uppercase();
+    let name = path
+        .file_name()
+        .expect("file name")
+        .to_string_lossy()
+        .to_uppercase();
     path.parent().expect("parent").join(name)
 }

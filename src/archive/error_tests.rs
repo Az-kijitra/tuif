@@ -18,8 +18,14 @@ fn r395_wire_strings_match_the_specified_code_table() {
         (ArchiveErrorCode::InvalidPath, "invalid_path"),
         (ArchiveErrorCode::InvalidName, "invalid_name"),
         (ArchiveErrorCode::AlreadyExists, "already_exists"),
-        (ArchiveErrorCode::DestinationInsideSource, "destination_inside_source"),
-        (ArchiveErrorCode::DestinationNotFound, "destination_not_found"),
+        (
+            ArchiveErrorCode::DestinationInsideSource,
+            "destination_inside_source",
+        ),
+        (
+            ArchiveErrorCode::DestinationNotFound,
+            "destination_not_found",
+        ),
         (ArchiveErrorCode::DestinationNotDir, "destination_not_dir"),
         (ArchiveErrorCode::ZipCorrupt, "zip_corrupt"),
         (ArchiveErrorCode::ZipUnsupported, "zip_unsupported"),
@@ -43,8 +49,11 @@ fn r395_wire_strings_match_the_specified_code_table() {
 // the entry path.
 #[test]
 fn r395_1_dto_carries_code_message_and_entry_path() {
-    let err = ArchiveError::new(ArchiveErrorCode::ZipEntryRejected, "entry `../x` escapes the destination")
-        .with_entry("../x");
+    let err = ArchiveError::new(
+        ArchiveErrorCode::ZipEntryRejected,
+        "entry `../x` escapes the destination",
+    )
+    .with_entry("../x");
     let dto = ArchiveErrorDto::from(err);
     assert_eq!(dto.code, "zip_entry_rejected");
     assert_eq!(dto.message, "entry `../x` escapes the destination");
@@ -53,7 +62,9 @@ fn r395_1_dto_carries_code_message_and_entry_path() {
 
 #[test]
 fn r395_1_dto_serializes_with_camel_case_keys() {
-    let dto = ArchiveErrorDto::from(ArchiveError::new(ArchiveErrorCode::ZipCorrupt, "bad").with_entry("a.txt"));
+    let dto = ArchiveErrorDto::from(
+        ArchiveError::new(ArchiveErrorCode::ZipCorrupt, "bad").with_entry("a.txt"),
+    );
     let text = toml::to_string(&dto).expect("serialize");
     assert!(text.contains("entryPath = \"a.txt\""), "{text}");
     assert!(text.contains("code = \"zip_corrupt\""), "{text}");
@@ -78,8 +89,14 @@ fn r395_2_storage_full_maps_to_io_error() {
 #[cfg(windows)]
 #[test]
 fn r395_2_windows_disk_full_raw_codes_map_to_io_error() {
-    assert_eq!(classify_io_error(&io::Error::from_raw_os_error(112)), ArchiveErrorCode::IoError);
-    assert_eq!(classify_io_error(&io::Error::from_raw_os_error(39)), ArchiveErrorCode::IoError);
+    assert_eq!(
+        classify_io_error(&io::Error::from_raw_os_error(112)),
+        ArchiveErrorCode::IoError
+    );
+    assert_eq!(
+        classify_io_error(&io::Error::from_raw_os_error(39)),
+        ArchiveErrorCode::IoError
+    );
 }
 
 #[test]
@@ -114,10 +131,18 @@ fn ac381_zip_error_variants_map_to_zip_codes() {
         classify_zip_error(&ZipError::InvalidArchive(std::borrow::Cow::Borrowed("bad"))),
         ArchiveErrorCode::ZipCorrupt
     );
-    assert_eq!(classify_zip_error(&ZipError::UnsupportedArchive("x")), ArchiveErrorCode::ZipUnsupported);
-    assert_eq!(classify_zip_error(&ZipError::FileNotFound), ArchiveErrorCode::ZipCorrupt);
     assert_eq!(
-        classify_zip_error(&ZipError::Io(io::Error::from(io::ErrorKind::PermissionDenied))),
+        classify_zip_error(&ZipError::UnsupportedArchive("x")),
+        ArchiveErrorCode::ZipUnsupported
+    );
+    assert_eq!(
+        classify_zip_error(&ZipError::FileNotFound),
+        ArchiveErrorCode::ZipCorrupt
+    );
+    assert_eq!(
+        classify_zip_error(&ZipError::Io(io::Error::from(
+            io::ErrorKind::PermissionDenied
+        ))),
         ArchiveErrorCode::PermissionDenied
     );
     assert_eq!(
@@ -132,6 +157,10 @@ fn ac381_zip_error_variants_map_to_zip_codes() {
 fn zip_io_errors_of_data_kinds_stay_zip_corrupt() {
     use zip::result::ZipError;
     for kind in [io::ErrorKind::InvalidData, io::ErrorKind::UnexpectedEof] {
-        assert_eq!(classify_zip_error(&ZipError::Io(io::Error::from(kind))), ArchiveErrorCode::ZipCorrupt, "{kind:?}");
+        assert_eq!(
+            classify_zip_error(&ZipError::Io(io::Error::from(kind))),
+            ArchiveErrorCode::ZipCorrupt,
+            "{kind:?}"
+        );
     }
 }

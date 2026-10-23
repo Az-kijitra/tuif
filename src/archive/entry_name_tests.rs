@@ -15,9 +15,15 @@ use super::error::ArchiveErrorCode;
 // R-347: bit 11 set -> the bytes are UTF-8.
 #[test]
 fn r347_utf8_flag_set_decodes_as_utf8() {
-    assert_eq!(resolve_entry_name("テスト.txt".as_bytes(), true).unwrap(), "テスト.txt");
+    assert_eq!(
+        resolve_entry_name("テスト.txt".as_bytes(), true).unwrap(),
+        "テスト.txt"
+    );
     assert_eq!(resolve_entry_name(b"plain.txt", true).unwrap(), "plain.txt");
-    assert_eq!(resolve_entry_name("日本語/😀.txt".as_bytes(), true).unwrap(), "日本語/😀.txt");
+    assert_eq!(
+        resolve_entry_name("日本語/😀.txt".as_bytes(), true).unwrap(),
+        "日本語/😀.txt"
+    );
 }
 
 // R-363 #11 / AC-364-3: bit 11 set but not valid UTF-8 (e.g. a WTF-8/CESU-8
@@ -27,7 +33,8 @@ fn ac364_3_utf8_flag_set_with_invalid_utf8_is_invalid_path() {
     let lone_surrogate = [b'a', 0xED, 0xA0, 0x80, b'.', b't', b'x', b't'];
     let garbage = [0xFF, 0xFE, b'x'];
     for bytes in [&lone_surrogate[..], &garbage[..]] {
-        let err = resolve_entry_name(bytes, true).expect_err("invalid UTF-8 with bit 11 must be rejected");
+        let err = resolve_entry_name(bytes, true)
+            .expect_err("invalid UTF-8 with bit 11 must be rejected");
         assert_eq!(err.code, ArchiveErrorCode::InvalidPath);
     }
 }
@@ -35,8 +42,14 @@ fn ac364_3_utf8_flag_set_with_invalid_utf8_is_invalid_path() {
 // R-347: bit 11 clear but the bytes ARE valid UTF-8 -> UTF-8 (F4).
 #[test]
 fn r347_no_flag_but_valid_utf8_is_decoded_as_utf8() {
-    assert_eq!(resolve_entry_name("テスト.txt".as_bytes(), false).unwrap(), "テスト.txt");
-    assert_eq!(resolve_entry_name(b"ascii.txt", false).unwrap(), "ascii.txt");
+    assert_eq!(
+        resolve_entry_name("テスト.txt".as_bytes(), false).unwrap(),
+        "テスト.txt"
+    );
+    assert_eq!(
+        resolve_entry_name(b"ascii.txt", false).unwrap(),
+        "ascii.txt"
+    );
 }
 
 // The resolver only decodes: `\`, `..`, `:` etc. are validated afterwards by
@@ -60,6 +73,8 @@ fn ac329_cp932_bytes_without_the_flag_are_decoded_as_cp932() {
 #[test]
 fn ac329_cp932_second_byte_0x5c_is_not_a_separator() {
     // ソース/表.txt
-    let bytes = [0x83, 0x5C, 0x81, 0x5B, 0x83, 0x58, b'/', 0x95, 0x5C, b'.', b't', b'x', b't'];
+    let bytes = [
+        0x83, 0x5C, 0x81, 0x5B, 0x83, 0x58, b'/', 0x95, 0x5C, b'.', b't', b'x', b't',
+    ];
     assert_eq!(resolve_entry_name(&bytes, false).unwrap(), "ソース/表.txt");
 }

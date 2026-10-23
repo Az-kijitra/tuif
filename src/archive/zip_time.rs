@@ -49,7 +49,9 @@ pub type OffsetLookup<'a> = &'a dyn Fn(i64) -> Option<i32>;
 /// The real lookup: the OS local offset at that instant via the `time` crate.
 pub fn local_offset_secs(unix_secs: i64) -> Option<i32> {
     let instant = time::OffsetDateTime::from_unix_timestamp(unix_secs).ok()?;
-    time::UtcOffset::local_offset_at(instant).ok().map(|offset| offset.whole_seconds())
+    time::UtcOffset::local_offset_at(instant)
+        .ok()
+        .map(|offset| offset.whole_seconds())
 }
 
 fn unix_secs_of(time: SystemTime) -> i64 {
@@ -97,8 +99,15 @@ pub fn zip_to_system_time_with(dt: &zip::DateTime, offset: OffsetLookup) -> Opti
     if !dt.is_valid() {
         return None;
     }
-    let days = days_from_civil(i64::from(dt.year()), i64::from(dt.month()), i64::from(dt.day()));
-    let civil = days * 86_400 + i64::from(dt.hour()) * 3600 + i64::from(dt.minute()) * 60 + i64::from(dt.second());
+    let days = days_from_civil(
+        i64::from(dt.year()),
+        i64::from(dt.month()),
+        i64::from(dt.day()),
+    );
+    let civil = days * 86_400
+        + i64::from(dt.hour()) * 3600
+        + i64::from(dt.minute()) * 60
+        + i64::from(dt.second());
     let utc = match offset(civil) {
         Some(guess) => {
             let candidate = civil - i64::from(guess);
@@ -110,7 +119,9 @@ pub fn zip_to_system_time_with(dt: &zip::DateTime, offset: OffsetLookup) -> Opti
         }
         None => civil,
     };
-    u64::try_from(utc).ok().map(|s| UNIX_EPOCH + Duration::from_secs(s))
+    u64::try_from(utc)
+        .ok()
+        .map(|s| UNIX_EPOCH + Duration::from_secs(s))
 }
 
 #[cfg(test)]
@@ -120,7 +131,14 @@ mod tests {
     const PLUS9: i32 = 9 * 3600;
 
     fn fields(dt: &zip::DateTime) -> (u16, u8, u8, u8, u8, u8) {
-        (dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second())
+        (
+            dt.year(),
+            dt.month(),
+            dt.day(),
+            dt.hour(),
+            dt.minute(),
+            dt.second(),
+        )
     }
 
     fn at(secs: u64) -> SystemTime {
@@ -139,15 +157,26 @@ mod tests {
     fn writes_the_local_civil_time_for_a_fixed_offset() {
         let t = at(1_577_934_246); // 2020-01-02 03:04:06 UTC
         let dt = system_time_to_zip_with(t, &|_| Some(PLUS9)).expect("dos time");
-        assert_eq!(fields(&dt), (2020, 1, 2, 12, 4, 6), "+09:00 -> 12:04:06 local");
+        assert_eq!(
+            fields(&dt),
+            (2020, 1, 2, 12, 4, 6),
+            "+09:00 -> 12:04:06 local"
+        );
         let west = system_time_to_zip_with(t, &|_| Some(-5 * 3600)).expect("dos time");
-        assert_eq!(fields(&west), (2020, 1, 1, 22, 4, 6), "-05:00 crosses midnight backwards");
+        assert_eq!(
+            fields(&west),
+            (2020, 1, 1, 22, 4, 6),
+            "-05:00 crosses midnight backwards"
+        );
     }
 
     #[test]
     fn reads_the_dos_fields_as_local_time_for_a_fixed_offset() {
         let dt = zip::DateTime::from_date_and_time(2020, 1, 2, 12, 4, 6).unwrap();
-        assert_eq!(zip_to_system_time_with(&dt, &|_| Some(PLUS9)), Some(at(1_577_934_246)));
+        assert_eq!(
+            zip_to_system_time_with(&dt, &|_| Some(PLUS9)),
+            Some(at(1_577_934_246))
+        );
     }
 
     #[test]
@@ -155,7 +184,11 @@ mod tests {
         for secs in [315_532_800u64, 1_577_934_246, 1_700_000_000, 4_102_444_800] {
             let secs = secs & !1; // DOS has 2-second resolution
             let dt = system_time_to_zip_with(at(secs), &|_| Some(PLUS9)).expect("dos time");
-            assert_eq!(zip_to_system_time_with(&dt, &|_| Some(PLUS9)), Some(at(secs)), "{secs}");
+            assert_eq!(
+                zip_to_system_time_with(&dt, &|_| Some(PLUS9)),
+                Some(at(secs)),
+                "{secs}"
+            );
         }
     }
 
@@ -176,7 +209,10 @@ mod tests {
         // Civil 2001-09-09 01:46:40 read as UTC is 1_000_000_000 -> guess +2h;
         // civil - 2h lies before the switch, where the offset is +1h: inconsistent.
         let dt = zip::DateTime::from_date_and_time(2001, 9, 9, 1, 46, 40).unwrap();
-        assert_eq!(zip_to_system_time_with(&dt, &lookup), Some(at(1_000_000_000)));
+        assert_eq!(
+            zip_to_system_time_with(&dt, &lookup),
+            Some(at(1_000_000_000))
+        );
     }
 
     #[test]

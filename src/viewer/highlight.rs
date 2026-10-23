@@ -53,7 +53,7 @@ fn try_run_bat(path: &Path, decoded_content: &str) -> Option<Vec<String>> {
     Some(text.lines().map(|l| l.replace('\t', "    ")).collect())
 }
 
-fn resolve_leaf_executable() -> Option< std::path::PathBuf > {
+fn resolve_leaf_executable() -> Option<std::path::PathBuf> {
     if let Some(exe) = resolve_executable("leaf.exe") {
         return Some(exe);
     }
@@ -109,7 +109,10 @@ pub fn parse_ansi_line_with_scroll(line: &str, scroll_x: usize) -> Vec<Span<'sta
         if chars[i] == '\x1b' && i + 1 < chars.len() && chars[i + 1] == '[' {
             // Flush current buffer if non-empty before changing style
             if !current_buf.is_empty() {
-                spans.push(Span::styled(std::mem::take(&mut current_buf), current_style));
+                spans.push(Span::styled(
+                    std::mem::take(&mut current_buf),
+                    current_style,
+                ));
             }
             i += 2;
             let start = i;

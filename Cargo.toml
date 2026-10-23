@@ -1,11 +1,15 @@
 [package]
-name = "cuifiler"
+name = "tuif"
 version = "0.1.0"
 edition = "2021"
 description = "Keyboard-driven CUI/TUI file manager for Windows PowerShell, built with Rust and Ratatui."
+license = "MIT"
+readme = "README.md"
+keywords = ["tui", "cli", "file-manager", "windows", "powershell"]
+categories = ["command-line-utilities"]
 
 [lib]
-name = "cuifiler"
+name = "tuif"
 path = "src/lib.rs"
 
 [[bin]]

@@ -75,18 +75,18 @@ impl Theme {
 
     pub fn preset_nord() -> Self {
         Self {
-            bg: Color::Rgb(46, 52, 64),                 // #2E3440 (Nord Dark Slate)
-            border: Color::Rgb(136, 192, 208),          // #88C0D0 (Frost Blue)
-            border_inactive: Color::Rgb(76, 86, 106),   // #4C566A
-            cursor_fg: Color::Rgb(46, 52, 64),          // #2E3440
-            cursor_bg: Color::Rgb(143, 188, 187),       // #8FBCBB (Teal Frost)
-            folder: Color::Rgb(129, 161, 193),          // #81A1C1 (Glacier Blue)
-            file: Color::Rgb(236, 239, 244),            // #ECEFF4 (Snow Storm White)
-            symlink: Color::Rgb(180, 142, 173),         // #B48EAD
-            executable: Color::Rgb(163, 190, 140),      // #A3BE8C
-            selected: Color::Rgb(235, 203, 139),        // #EBCB8B (Yellow)
-            status_bar_fg: Color::Rgb(229, 233, 240),   // #E5E9F0
-            status_bar_bg: Color::Rgb(59, 66, 82),      // #3B4252
+            bg: Color::Rgb(46, 52, 64),               // #2E3440 (Nord Dark Slate)
+            border: Color::Rgb(136, 192, 208),        // #88C0D0 (Frost Blue)
+            border_inactive: Color::Rgb(76, 86, 106), // #4C566A
+            cursor_fg: Color::Rgb(46, 52, 64),        // #2E3440
+            cursor_bg: Color::Rgb(143, 188, 187),     // #8FBCBB (Teal Frost)
+            folder: Color::Rgb(129, 161, 193),        // #81A1C1 (Glacier Blue)
+            file: Color::Rgb(236, 239, 244),          // #ECEFF4 (Snow Storm White)
+            symlink: Color::Rgb(180, 142, 173),       // #B48EAD
+            executable: Color::Rgb(163, 190, 140),    // #A3BE8C
+            selected: Color::Rgb(235, 203, 139),      // #EBCB8B (Yellow)
+            status_bar_fg: Color::Rgb(229, 233, 240), // #E5E9F0
+            status_bar_bg: Color::Rgb(59, 66, 82),    // #3B4252
             menu_bar_active_fg: Color::Rgb(46, 52, 64),
             menu_bar_active_bg: Color::Rgb(136, 192, 208),
             tree_current: Color::Rgb(136, 192, 208),
@@ -96,21 +96,21 @@ impl Theme {
 
     pub fn preset_monokai() -> Self {
         Self {
-            bg: Color::Rgb(39, 40, 34),                 // #272822 (Monokai Charcoal)
-            border: Color::Rgb(249, 38, 114),           // #F92672 (Monokai Hot Pink!)
-            border_inactive: Color::Rgb(117, 113, 94),  // #75715E
+            bg: Color::Rgb(39, 40, 34),                // #272822 (Monokai Charcoal)
+            border: Color::Rgb(249, 38, 114),          // #F92672 (Monokai Hot Pink!)
+            border_inactive: Color::Rgb(117, 113, 94), // #75715E
             cursor_fg: Color::Rgb(39, 40, 34),
-            cursor_bg: Color::Rgb(166, 226, 46),        // #A6E22E (Lime Green)
-            folder: Color::Rgb(253, 151, 31),           // #FD971F (Monokai Orange!)
-            file: Color::Rgb(248, 248, 242),            // #F8F8F2
-            symlink: Color::Rgb(174, 129, 255),         // #AE81FF (Purple)
-            executable: Color::Rgb(166, 226, 46),       // #A6E22E
-            selected: Color::Rgb(230, 219, 116),        // #E6DB74 (Yellow)
+            cursor_bg: Color::Rgb(166, 226, 46), // #A6E22E (Lime Green)
+            folder: Color::Rgb(253, 151, 31),    // #FD971F (Monokai Orange!)
+            file: Color::Rgb(248, 248, 242),     // #F8F8F2
+            symlink: Color::Rgb(174, 129, 255),  // #AE81FF (Purple)
+            executable: Color::Rgb(166, 226, 46), // #A6E22E
+            selected: Color::Rgb(230, 219, 116), // #E6DB74 (Yellow)
             status_bar_fg: Color::Rgb(248, 248, 242),
-            status_bar_bg: Color::Rgb(62, 61, 50),      // #3E3D32
+            status_bar_bg: Color::Rgb(62, 61, 50), // #3E3D32
             menu_bar_active_fg: Color::Rgb(39, 40, 34),
             menu_bar_active_bg: Color::Rgb(249, 38, 114),
-            tree_current: Color::Rgb(102, 217, 239),    // #66D9EF (Cyan)
+            tree_current: Color::Rgb(102, 217, 239), // #66D9EF (Cyan)
             tree_cursor: Color::Rgb(230, 219, 116),
         }
     }
@@ -118,39 +118,39 @@ impl Theme {
     pub fn preset_catppuccin() -> Self {
         // Catppuccin Mocha
         Self {
-            bg: Color::Rgb(30, 30, 46),                 // #1E1E2E (Catppuccin Base)
-            border: Color::Rgb(203, 166, 247),          // #CBA6F7 (Catppuccin Mauve/Lavender!)
-            border_inactive: Color::Rgb(88, 91, 112),   // #585B70
-            cursor_fg: Color::Rgb(17, 17, 27),          // #11111B
-            cursor_bg: Color::Rgb(137, 180, 250),       // #89B4FA (Blue)
-            folder: Color::Rgb(249, 226, 175),          // #F9E2AF (Yellow/Gold)
-            file: Color::Rgb(205, 214, 244),            // #CDD6F4
-            symlink: Color::Rgb(245, 194, 231),         // #F5C2E7 (Pink)
-            executable: Color::Rgb(166, 227, 161),      // #A6E3A1 (Green)
-            selected: Color::Rgb(250, 179, 135),        // #FAB387 (Peach)
+            bg: Color::Rgb(30, 30, 46),               // #1E1E2E (Catppuccin Base)
+            border: Color::Rgb(203, 166, 247),        // #CBA6F7 (Catppuccin Mauve/Lavender!)
+            border_inactive: Color::Rgb(88, 91, 112), // #585B70
+            cursor_fg: Color::Rgb(17, 17, 27),        // #11111B
+            cursor_bg: Color::Rgb(137, 180, 250),     // #89B4FA (Blue)
+            folder: Color::Rgb(249, 226, 175),        // #F9E2AF (Yellow/Gold)
+            file: Color::Rgb(205, 214, 244),          // #CDD6F4
+            symlink: Color::Rgb(245, 194, 231),       // #F5C2E7 (Pink)
+            executable: Color::Rgb(166, 227, 161),    // #A6E3A1 (Green)
+            selected: Color::Rgb(250, 179, 135),      // #FAB387 (Peach)
             status_bar_fg: Color::Rgb(205, 214, 244),
-            status_bar_bg: Color::Rgb(49, 50, 68),      // #313244
+            status_bar_bg: Color::Rgb(49, 50, 68), // #313244
             menu_bar_active_fg: Color::Rgb(17, 17, 27),
             menu_bar_active_bg: Color::Rgb(203, 166, 247),
-            tree_current: Color::Rgb(137, 220, 235),    // #89DCEB
+            tree_current: Color::Rgb(137, 220, 235), // #89DCEB
             tree_cursor: Color::Rgb(249, 226, 175),
         }
     }
 
     pub fn preset_solarized_dark() -> Self {
         Self {
-            bg: Color::Rgb(0, 43, 54),                  // #002B36 (Solarized base03)
-            border: Color::Rgb(38, 139, 210),           // #268BD2 (Solarized Blue)
-            border_inactive: Color::Rgb(7, 54, 66),     // #073642 (Solarized base02)
+            bg: Color::Rgb(0, 43, 54),              // #002B36 (Solarized base03)
+            border: Color::Rgb(38, 139, 210),       // #268BD2 (Solarized Blue)
+            border_inactive: Color::Rgb(7, 54, 66), // #073642 (Solarized base02)
             cursor_fg: Color::Rgb(0, 43, 54),
-            cursor_bg: Color::Rgb(42, 161, 152),        // #2AA198 (Solarized Cyan)
-            folder: Color::Rgb(181, 137, 0),            // #B58900 (Solarized Yellow)
-            file: Color::Rgb(131, 148, 150),            // #839496 (base0)
-            symlink: Color::Rgb(211, 54, 130),          // #D33682 (Magenta)
-            executable: Color::Rgb(133, 153, 0),        // #859900 (Green)
-            selected: Color::Rgb(203, 75, 22),          // #CB4B16 (Orange)
-            status_bar_fg: Color::Rgb(147, 161, 161),   // #93A1A1 (base1)
-            status_bar_bg: Color::Rgb(7, 54, 66),       // #073642
+            cursor_bg: Color::Rgb(42, 161, 152), // #2AA198 (Solarized Cyan)
+            folder: Color::Rgb(181, 137, 0),     // #B58900 (Solarized Yellow)
+            file: Color::Rgb(131, 148, 150),     // #839496 (base0)
+            symlink: Color::Rgb(211, 54, 130),   // #D33682 (Magenta)
+            executable: Color::Rgb(133, 153, 0), // #859900 (Green)
+            selected: Color::Rgb(203, 75, 22),   // #CB4B16 (Orange)
+            status_bar_fg: Color::Rgb(147, 161, 161), // #93A1A1 (base1)
+            status_bar_bg: Color::Rgb(7, 54, 66), // #073642
             menu_bar_active_fg: Color::Rgb(0, 43, 54),
             menu_bar_active_bg: Color::Rgb(38, 139, 210),
             tree_current: Color::Rgb(42, 161, 152),
@@ -164,14 +164,14 @@ impl Theme {
             border: Color::Rgb(0, 102, 204),            // #0066CC (Blue)
             border_inactive: Color::Rgb(180, 180, 180), // #B4B4B4
             cursor_fg: Color::White,
-            cursor_bg: Color::Rgb(0, 120, 215),         // #0078D7
-            folder: Color::Rgb(217, 119, 6),            // #D97706 (Amber/Orange)
-            file: Color::Rgb(31, 41, 55),               // #1F2937 (Dark Charcoal)
-            symlink: Color::Rgb(124, 58, 237),          // #7C3AED
-            executable: Color::Rgb(22, 163, 74),        // #16A34A
-            selected: Color::Rgb(234, 88, 12),          // #EA580C
+            cursor_bg: Color::Rgb(0, 120, 215),  // #0078D7
+            folder: Color::Rgb(217, 119, 6),     // #D97706 (Amber/Orange)
+            file: Color::Rgb(31, 41, 55),        // #1F2937 (Dark Charcoal)
+            symlink: Color::Rgb(124, 58, 237),   // #7C3AED
+            executable: Color::Rgb(22, 163, 74), // #16A34A
+            selected: Color::Rgb(234, 88, 12),   // #EA580C
             status_bar_fg: Color::Rgb(55, 65, 81),
-            status_bar_bg: Color::Rgb(229, 231, 235),   // #E5E7EB
+            status_bar_bg: Color::Rgb(229, 231, 235), // #E5E7EB
             menu_bar_active_fg: Color::White,
             menu_bar_active_bg: Color::Rgb(0, 120, 215),
             tree_current: Color::Rgb(0, 102, 204),
@@ -180,7 +180,11 @@ impl Theme {
     }
 
     pub fn from_preset(name: &str) -> Self {
-        match name.to_ascii_lowercase().replace(['-', '_', ' '], "").as_str() {
+        match name
+            .to_ascii_lowercase()
+            .replace(['-', '_', ' '], "")
+            .as_str()
+        {
             "nord" => Self::preset_nord(),
             "monokai" => Self::preset_monokai(),
             "catppuccin" | "catppuccinmocha" => Self::preset_catppuccin(),
@@ -192,52 +196,84 @@ impl Theme {
 
     pub fn apply_overrides(&mut self, colors: &CustomColors) {
         if let Some(ref c) = colors.bg {
-            if let Some(col) = parse_color(c) { self.bg = col; }
+            if let Some(col) = parse_color(c) {
+                self.bg = col;
+            }
         }
         if let Some(ref c) = colors.border {
-            if let Some(col) = parse_color(c) { self.border = col; }
+            if let Some(col) = parse_color(c) {
+                self.border = col;
+            }
         }
         if let Some(ref c) = colors.border_inactive {
-            if let Some(col) = parse_color(c) { self.border_inactive = col; }
+            if let Some(col) = parse_color(c) {
+                self.border_inactive = col;
+            }
         }
         if let Some(ref c) = colors.cursor_fg {
-            if let Some(col) = parse_color(c) { self.cursor_fg = col; }
+            if let Some(col) = parse_color(c) {
+                self.cursor_fg = col;
+            }
         }
         if let Some(ref c) = colors.cursor_bg {
-            if let Some(col) = parse_color(c) { self.cursor_bg = col; }
+            if let Some(col) = parse_color(c) {
+                self.cursor_bg = col;
+            }
         }
         if let Some(ref c) = colors.folder {
-            if let Some(col) = parse_color(c) { self.folder = col; }
+            if let Some(col) = parse_color(c) {
+                self.folder = col;
+            }
         }
         if let Some(ref c) = colors.file {
-            if let Some(col) = parse_color(c) { self.file = col; }
+            if let Some(col) = parse_color(c) {
+                self.file = col;
+            }
         }
         if let Some(ref c) = colors.symlink {
-            if let Some(col) = parse_color(c) { self.symlink = col; }
+            if let Some(col) = parse_color(c) {
+                self.symlink = col;
+            }
         }
         if let Some(ref c) = colors.executable {
-            if let Some(col) = parse_color(c) { self.executable = col; }
+            if let Some(col) = parse_color(c) {
+                self.executable = col;
+            }
         }
         if let Some(ref c) = colors.selected {
-            if let Some(col) = parse_color(c) { self.selected = col; }
+            if let Some(col) = parse_color(c) {
+                self.selected = col;
+            }
         }
         if let Some(ref c) = colors.status_bar_fg {
-            if let Some(col) = parse_color(c) { self.status_bar_fg = col; }
+            if let Some(col) = parse_color(c) {
+                self.status_bar_fg = col;
+            }
         }
         if let Some(ref c) = colors.status_bar_bg {
-            if let Some(col) = parse_color(c) { self.status_bar_bg = col; }
+            if let Some(col) = parse_color(c) {
+                self.status_bar_bg = col;
+            }
         }
         if let Some(ref c) = colors.menu_bar_active_fg {
-            if let Some(col) = parse_color(c) { self.menu_bar_active_fg = col; }
+            if let Some(col) = parse_color(c) {
+                self.menu_bar_active_fg = col;
+            }
         }
         if let Some(ref c) = colors.menu_bar_active_bg {
-            if let Some(col) = parse_color(c) { self.menu_bar_active_bg = col; }
+            if let Some(col) = parse_color(c) {
+                self.menu_bar_active_bg = col;
+            }
         }
         if let Some(ref c) = colors.tree_current {
-            if let Some(col) = parse_color(c) { self.tree_current = col; }
+            if let Some(col) = parse_color(c) {
+                self.tree_current = col;
+            }
         }
         if let Some(ref c) = colors.tree_cursor {
-            if let Some(col) = parse_color(c) { self.tree_cursor = col; }
+            if let Some(col) = parse_color(c) {
+                self.tree_cursor = col;
+            }
         }
     }
 }
@@ -288,7 +324,9 @@ pub fn parse_color(s: &str) -> Option<Color> {
         "light_green" | "lightgreen" => Some(Color::LightGreen),
         "light_yellow" | "lightyellow" => Some(Color::LightYellow),
         "light_blue" | "lightblue" => Some(Color::LightBlue),
-        "light_magenta" | "lightmagenta" | "light_purple" | "lightpurple" => Some(Color::LightMagenta),
+        "light_magenta" | "lightmagenta" | "light_purple" | "lightpurple" => {
+            Some(Color::LightMagenta)
+        }
         "light_cyan" | "lightcyan" => Some(Color::LightCyan),
         "white" => Some(Color::White),
         _ => None,

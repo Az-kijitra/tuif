@@ -46,7 +46,10 @@ pub fn load(path: &Path) -> io::Result<NavigationLoadResult> {
             data.visit_history.truncate(MAX_VISIT_HISTORY);
             data.jump_list.truncate(MAX_JUMP_LIST);
             data.search_history.truncate(MAX_SEARCH_HISTORY);
-            Ok(NavigationLoadResult { data, recovered_from_corruption: false })
+            Ok(NavigationLoadResult {
+                data,
+                recovered_from_corruption: false,
+            })
         }
         None => {
             let backup_path = path.with_extension("toml.bak");
@@ -60,8 +63,8 @@ pub fn load(path: &Path) -> io::Result<NavigationLoadResult> {
 }
 
 pub fn save(path: &Path, data: &NavigationData) -> io::Result<()> {
-    let serialized = toml::to_string_pretty(data)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let serialized =
+        toml::to_string_pretty(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     crate::config::atomic::atomic_write(path, &serialized)
 }
 
@@ -136,8 +139,14 @@ mod tests {
 
         assert_eq!(r.data, NavigationData::default());
         assert!(r.recovered_from_corruption);
-        assert_eq!(fs::read_to_string(dir.path().join("navigation.toml.bak")).unwrap(), bad);
-        assert!(!path.exists(), "corrupt original must no longer sit at the load path");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("navigation.toml.bak")).unwrap(),
+            bad
+        );
+        assert!(
+            !path.exists(),
+            "corrupt original must no longer sit at the load path"
+        );
     }
 
     // MUST-48(a): invalid UTF-8 is a parse failure too, not a bare Err.
@@ -152,7 +161,10 @@ mod tests {
 
         assert_eq!(r.data, NavigationData::default());
         assert!(r.recovered_from_corruption);
-        assert_eq!(fs::read(dir.path().join("navigation.toml.bak")).unwrap(), bytes);
+        assert_eq!(
+            fs::read(dir.path().join("navigation.toml.bak")).unwrap(),
+            bytes
+        );
     }
 
     // AC-238 (last clause): a later save does not lose the backed-up file.
@@ -163,7 +175,10 @@ mod tests {
         fs::write(&path, "garbage [[[").unwrap();
         load(&path).expect("load");
         save(&path, &NavigationData::default()).expect("save");
-        assert_eq!(fs::read_to_string(dir.path().join("navigation.toml.bak")).unwrap(), "garbage [[[");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("navigation.toml.bak")).unwrap(),
+            "garbage [[["
+        );
     }
 
     // §3.2.2: an existing .bak is overwritten by a newer corruption.
@@ -175,7 +190,10 @@ mod tests {
         fs::write(&path, "newer [[[").unwrap();
         let r = load(&path).expect("load");
         assert!(r.recovered_from_corruption);
-        assert_eq!(fs::read_to_string(dir.path().join("navigation.toml.bak")).unwrap(), "newer [[[");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("navigation.toml.bak")).unwrap(),
+            "newer [[["
+        );
     }
 
     // MUST-48(b)/SHOULD-69: a genuine I/O error (not NotFound) is Err, never
@@ -201,7 +219,11 @@ mod tests {
         fs::write(bak.join("keep"), "x").unwrap(); // non-empty dir: rename cannot replace it
 
         assert!(load(&path).is_err());
-        assert_eq!(fs::read_to_string(&path).unwrap(), "garbage [[[", "original must be left intact");
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "garbage [[[",
+            "original must be left intact"
+        );
     }
 
     // R-205-2 / R-248-3 / AC-240: truncate on load to 50/20/20.

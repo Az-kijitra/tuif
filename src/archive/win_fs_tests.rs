@@ -32,8 +32,16 @@ fn must66_move_no_replace_refuses_an_existing_destination() {
     let to = write_file(tmp.path(), "to.txt", b"precious original");
     let err = move_no_replace(&from, &to).expect_err("must not replace");
     assert_eq!(err.kind(), ErrorKind::AlreadyExists, "{err:?}");
-    assert_eq!(read_string(&to), "precious original", "the existing file must be unchanged");
-    assert_eq!(read_string(&from), "new content", "the source must be left in place");
+    assert_eq!(
+        read_string(&to),
+        "precious original",
+        "the existing file must be unchanged"
+    );
+    assert_eq!(
+        read_string(&from),
+        "new content",
+        "the source must be left in place"
+    );
 }
 
 // Same for a read-only destination and for a destination that differs only in

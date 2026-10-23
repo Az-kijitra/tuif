@@ -28,7 +28,11 @@ fn ac78_copy_overwrite_into_the_same_dir_with_different_case_keeps_the_source() 
     let summary = copy_batch(&[a.clone()], &dest_upper, ConflictResolution::Overwrite);
 
     assert_eq!(read(&a), "PRECIOUS", "the source must survive");
-    assert_eq!((summary.skipped, summary.failed), (1, 0), "R-25: same item is skipped, not a failure: {summary:?}");
+    assert_eq!(
+        (summary.skipped, summary.failed),
+        (1, 0),
+        "R-25: same item is skipped, not a failure: {summary:?}"
+    );
 }
 
 // AC-78 (Windows), move.
@@ -66,14 +70,20 @@ fn ac79_copy_overwrite_via_a_junction_to_the_same_dir_keeps_the_source() {
     let root = tempdir();
     let a = write(root.path(), "real/a.txt", "PRECIOUS");
     let link = root.path().join("link");
-    assert!(make_dir_link(&link, &root.path().join("real")), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&link, &root.path().join("real")),
+        "test setup: could not create a directory link"
+    );
 
     let summary = copy_batch(&[a.clone()], &link, ConflictResolution::Overwrite);
 
     remove_dir_link(&link);
     assert_eq!(read(&a), "PRECIOUS");
     assert_eq!(summary.failed, 0, "{summary:?}");
-    assert_eq!(summary.skipped, 1, "same entity -> R-25 skipped: {summary:?}");
+    assert_eq!(
+        summary.skipped, 1,
+        "same entity -> R-25 skipped: {summary:?}"
+    );
 }
 
 // AC-79, move (file).
@@ -82,7 +92,10 @@ fn ac79_move_overwrite_via_a_junction_to_the_same_dir_keeps_the_source() {
     let root = tempdir();
     let a = write(root.path(), "real/a.txt", "PRECIOUS");
     let link = root.path().join("link");
-    assert!(make_dir_link(&link, &root.path().join("real")), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&link, &root.path().join("real")),
+        "test setup: could not create a directory link"
+    );
 
     let summary = move_batch(&[a.clone()], &link, ConflictResolution::Overwrite);
 
@@ -99,10 +112,21 @@ fn ac79_folder_overwrite_via_a_junction_keeps_the_source_folder_and_its_files() 
     let root = tempdir();
     write(root.path(), "real/sub/f.txt", "PRECIOUS");
     let link = root.path().join("link");
-    assert!(make_dir_link(&link, &root.path().join("real")), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&link, &root.path().join("real")),
+        "test setup: could not create a directory link"
+    );
 
-    let copy = copy_batch(&[root.path().join("real/sub")], &link, ConflictResolution::Overwrite);
-    let mv = move_batch(&[root.path().join("real/sub")], &link, ConflictResolution::Overwrite);
+    let copy = copy_batch(
+        &[root.path().join("real/sub")],
+        &link,
+        ConflictResolution::Overwrite,
+    );
+    let mv = move_batch(
+        &[root.path().join("real/sub")],
+        &link,
+        ConflictResolution::Overwrite,
+    );
 
     remove_dir_link(&link);
     assert_eq!(read(&root.path().join("real/sub/f.txt")), "PRECIOUS");
@@ -117,17 +141,32 @@ fn ac79_folder_overwrite_via_a_junction_keeps_the_source_folder_and_its_files() 
 #[test]
 fn ac81_copy_overwrite_of_an_ancestor_is_refused_and_nothing_changes() {
     let root = tempdir();
-    let inner = write(root.path(), "X/foo/foo/leaf.txt", "PRECIOUS").parent().unwrap().to_path_buf();
+    let inner = write(root.path(), "X/foo/foo/leaf.txt", "PRECIOUS")
+        .parent()
+        .unwrap()
+        .to_path_buf();
     write(root.path(), "X/foo/sibling.txt", "sibling");
     let before_foo = names(&root.path().join("X/foo"));
 
-    let summary = copy_batch(&[inner.clone()], &root.path().join("X"), ConflictResolution::Overwrite);
+    let summary = copy_batch(
+        &[inner.clone()],
+        &root.path().join("X"),
+        ConflictResolution::Overwrite,
+    );
 
     assert_eq!((summary.ok, summary.failed), (0, 1), "{summary:?}");
     assert_eq!(summary.failures[0].code, "overwrite_ancestor");
-    assert_eq!(read(&inner.join("leaf.txt")), "PRECIOUS", "the copy source must remain");
+    assert_eq!(
+        read(&inner.join("leaf.txt")),
+        "PRECIOUS",
+        "the copy source must remain"
+    );
     assert_eq!(read(&root.path().join("X/foo/sibling.txt")), "sibling");
-    assert_eq!(names(&root.path().join("X/foo")), before_foo, "the existing destination item is unchanged");
+    assert_eq!(
+        names(&root.path().join("X/foo")),
+        before_foo,
+        "the existing destination item is unchanged"
+    );
 }
 
 // AC-81 (file source, move).
@@ -137,7 +176,11 @@ fn ac81_move_overwrite_of_an_ancestor_is_refused_and_the_source_remains() {
     let inner = write(root.path(), "X/foo/foo", "PRECIOUS");
     write(root.path(), "X/foo/sibling.txt", "sibling");
 
-    let summary = move_batch(&[inner.clone()], &root.path().join("X"), ConflictResolution::Overwrite);
+    let summary = move_batch(
+        &[inner.clone()],
+        &root.path().join("X"),
+        ConflictResolution::Overwrite,
+    );
 
     assert_eq!((summary.ok, summary.failed), (0, 1), "{summary:?}");
     assert_eq!(summary.failures[0].code, "overwrite_ancestor");
@@ -152,9 +195,17 @@ fn ac81_an_ancestor_refusal_does_not_stop_the_other_items() {
     let inner = write(root.path(), "X/foo/foo", "PRECIOUS");
     let other = write(root.path(), "elsewhere/other.txt", "other");
 
-    let summary = copy_batch(&[inner.clone(), other], &root.path().join("X"), ConflictResolution::Overwrite);
+    let summary = copy_batch(
+        &[inner.clone(), other],
+        &root.path().join("X"),
+        ConflictResolution::Overwrite,
+    );
 
-    assert_eq!((summary.ok, summary.failed, summary.total), (1, 1, 2), "{summary:?}");
+    assert_eq!(
+        (summary.ok, summary.failed, summary.total),
+        (1, 1, 2),
+        "{summary:?}"
+    );
     assert_eq!(read(&root.path().join("X/other.txt")), "other");
     assert_eq!(read(&inner), "PRECIOUS");
 }
@@ -165,7 +216,10 @@ fn ac81_ancestor_is_recognised_through_a_junction_alias_of_the_destination() {
     let root = tempdir();
     let inner = write(root.path(), "X/foo/foo", "PRECIOUS");
     let alias = root.path().join("alias_of_x");
-    assert!(make_dir_link(&alias, &root.path().join("X")), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&alias, &root.path().join("X")),
+        "test setup: could not create a directory link"
+    );
 
     let summary = copy_batch(&[inner.clone()], &alias, ConflictResolution::Overwrite);
 
@@ -186,7 +240,10 @@ fn ac80_preflight_same_path_is_detected_across_spellings() {
     std::fs::create_dir_all(&dir).unwrap();
     let canonical = std::fs::canonicalize(&dir).expect("canonicalize");
 
-    assert_eq!(preflight_transfer(&[dir], &canonical), Err(TransferPreflightError::SamePath));
+    assert_eq!(
+        preflight_transfer(&[dir], &canonical),
+        Err(TransferPreflightError::SamePath)
+    );
 }
 
 // AC-82 (Windows): destination inside the source, written with different
@@ -212,7 +269,10 @@ fn ac82_preflight_detects_destination_inside_source_via_a_junction() {
     let source = root.path().join("parent");
     std::fs::create_dir_all(source.join("child")).unwrap();
     let link = root.path().join("link_to_child");
-    assert!(make_dir_link(&link, &source.join("child")), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&link, &source.join("child")),
+        "test setup: could not create a directory link"
+    );
 
     let result = preflight_transfer(&[source], &link);
 
@@ -242,7 +302,10 @@ fn ac80_preflight_same_path_is_detected_via_a_junction() {
     let real = root.path().join("real");
     std::fs::create_dir_all(&real).unwrap();
     let link = root.path().join("link");
-    assert!(make_dir_link(&link, &real), "test setup: could not create a directory link");
+    assert!(
+        make_dir_link(&link, &real),
+        "test setup: could not create a directory link"
+    );
 
     let result = preflight_transfer(&[real], &link);
 
@@ -270,11 +333,18 @@ fn preflight_does_not_confuse_a_sibling_with_a_similar_name_for_a_descendant() {
 #[test]
 fn m1_reject_with_an_ancestor_source_reports_overwrite_ancestor() {
     let root = tempdir();
-    let inner = write(root.path(), "X/foo/foo/leaf.txt", "PRECIOUS").parent().unwrap().to_path_buf();
+    let inner = write(root.path(), "X/foo/foo/leaf.txt", "PRECIOUS")
+        .parent()
+        .unwrap()
+        .to_path_buf();
     write(root.path(), "X/foo/sibling.txt", "sibling");
     let before_foo = names(&root.path().join("X/foo"));
 
-    let summary = copy_batch(&[inner.clone()], &root.path().join("X"), ConflictResolution::Reject);
+    let summary = copy_batch(
+        &[inner.clone()],
+        &root.path().join("X"),
+        ConflictResolution::Reject,
+    );
 
     assert_eq!((summary.ok, summary.failed), (0, 1), "{summary:?}");
     assert_eq!(summary.failures[0].code, "overwrite_ancestor");
@@ -305,7 +375,10 @@ fn m2_create_new_file_does_not_truncate_an_existing_file() {
 
     let result = super::create::create_new_file(&existing);
 
-    assert_eq!(result.unwrap_err(), super::preflight::MutatePreflightError::AlreadyExists);
+    assert_eq!(
+        result.unwrap_err(),
+        super::preflight::MutatePreflightError::AlreadyExists
+    );
     assert_eq!(read(&existing), "keep me");
 }
 
@@ -356,7 +429,11 @@ fn ac06_8_copy_with_a_missing_item_in_the_middle_copies_the_rest_and_reports_not
 
     let summary = copy_batch(&[a, missing.clone(), c], &dest, ConflictResolution::Reject);
 
-    assert_eq!((summary.total, summary.ok, summary.failed, summary.skipped), (3, 2, 1, 0), "{summary:?}");
+    assert_eq!(
+        (summary.total, summary.ok, summary.failed, summary.skipped),
+        (3, 2, 1, 0),
+        "{summary:?}"
+    );
     assert_eq!(summary.failures.len(), 1);
     assert_eq!(summary.failures[0].path, missing);
     assert_eq!(summary.failures[0].code, "not_found");
@@ -372,9 +449,17 @@ fn ac06_8_move_with_a_missing_item_moves_the_rest_and_reports_not_found() {
     let dest = root.path().join("dst");
     std::fs::create_dir_all(&dest).unwrap();
 
-    let summary = move_batch(&[missing.clone(), a.clone()], &dest, ConflictResolution::Reject);
+    let summary = move_batch(
+        &[missing.clone(), a.clone()],
+        &dest,
+        ConflictResolution::Reject,
+    );
 
-    assert_eq!((summary.total, summary.ok, summary.failed), (2, 1, 1), "{summary:?}");
+    assert_eq!(
+        (summary.total, summary.ok, summary.failed),
+        (2, 1, 1),
+        "{summary:?}"
+    );
     assert_eq!(summary.failures[0].path, missing);
     assert_eq!(summary.failures[0].code, "not_found");
     assert_eq!(read(&dest.join("a.txt")), "A");
@@ -391,7 +476,11 @@ fn ac06_8_a_batch_of_only_missing_items_fails_each_item_with_not_found() {
 
     let summary = copy_batch(&items, &dest, ConflictResolution::Reject);
 
-    assert_eq!((summary.total, summary.ok, summary.failed), (2, 0, 2), "{summary:?}");
+    assert_eq!(
+        (summary.total, summary.ok, summary.failed),
+        (2, 0, 2),
+        "{summary:?}"
+    );
     assert!(summary.failures.iter().all(|f| f.code == "not_found"));
 }
 
@@ -403,7 +492,8 @@ fn ac06_8_detect_conflicts_ignores_a_missing_item() {
     write(root.path(), "dst/a.txt", "existing");
     let missing = root.path().join("src").join("zz.txt");
 
-    let conflicts = super::transfer::detect_conflicts(&[missing, a], &root.path().join("dst")).expect("no batch-level error");
+    let conflicts = super::transfer::detect_conflicts(&[missing, a], &root.path().join("dst"))
+        .expect("no batch-level error");
 
     assert_eq!(conflicts.len(), 1, "only a.txt conflicts");
     assert_eq!(conflicts[0].name, "a.txt");

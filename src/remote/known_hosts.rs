@@ -68,9 +68,15 @@ mod tests {
     #[test]
     fn check_trust_and_round_trip() {
         let mut k = KnownHosts::default();
-        assert_eq!(k.check("h:22", "ssh-ed25519 SHA256:aaa"), HostKeyStatus::Unknown);
+        assert_eq!(
+            k.check("h:22", "ssh-ed25519 SHA256:aaa"),
+            HostKeyStatus::Unknown
+        );
         k.trust("h:22", "ssh-ed25519 SHA256:aaa");
-        assert_eq!(k.check("h:22", "ssh-ed25519 SHA256:aaa"), HostKeyStatus::Trusted);
+        assert_eq!(
+            k.check("h:22", "ssh-ed25519 SHA256:aaa"),
+            HostKeyStatus::Trusted
+        );
         assert_eq!(
             k.check("h:22", "ssh-ed25519 SHA256:bbb"),
             HostKeyStatus::Mismatch {

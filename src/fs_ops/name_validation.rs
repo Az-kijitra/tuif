@@ -81,7 +81,11 @@ mod tests {
     // confirmed 9-character list — not 8).
     #[test]
     fn ac54_each_of_the_nine_forbidden_characters_is_invalid_name() {
-        assert_eq!(FORBIDDEN_CHARS.len(), 9, "R-62 #3 lists exactly 9 forbidden characters");
+        assert_eq!(
+            FORBIDDEN_CHARS.len(),
+            9,
+            "R-62 #3 lists exactly 9 forbidden characters"
+        );
         for ch in FORBIDDEN_CHARS {
             let name = format!("bad{ch}name");
             assert_eq!(

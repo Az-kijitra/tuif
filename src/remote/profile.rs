@@ -118,7 +118,11 @@ pub fn generate_id(name: &str, existing: &[ConnectionProfile]) -> String {
         slug = slug.replace("--", "-");
     }
     let slug = slug.trim_matches('-').to_string();
-    let base = if slug.is_empty() { "conn".to_string() } else { slug };
+    let base = if slug.is_empty() {
+        "conn".to_string()
+    } else {
+        slug
+    };
     if !existing.iter().any(|p| p.id == base) {
         return base;
     }
@@ -160,7 +164,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert!(load(&dir.path().join("none.toml")).unwrap().is_empty());
         let path = dir.path().join("c.toml");
-        std::fs::write(&path, "[[connection]]\nid='a'\nname='a'\nhost='h'\nuser='u'\n").unwrap();
+        std::fs::write(
+            &path,
+            "[[connection]]\nid='a'\nname='a'\nhost='h'\nuser='u'\n",
+        )
+        .unwrap();
         let p = &load(&path).unwrap()[0];
         assert_eq!(p.port, 22);
         assert!(!p.save_password);

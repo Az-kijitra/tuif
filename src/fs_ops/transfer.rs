@@ -44,8 +44,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::shared::identity::{is_strictly_within, same_entity};
 use super::preflight::{self, TransferPreflightError};
+use crate::shared::identity::{is_strictly_within, same_entity};
 
 /// R-22: a single failed item within a batch result.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -278,7 +278,10 @@ fn overwrite_entry(
         None => {
             errors.push(ItemError {
                 code: "io_error",
-                message: format!("cannot verify that `{}` is a different item; not overwritten", target.display()),
+                message: format!(
+                    "cannot verify that `{}` is a different item; not overwritten",
+                    target.display()
+                ),
             });
             return;
         }
@@ -289,7 +292,11 @@ fn overwrite_entry(
         if target_inside_source != Some(false) || source_inside_target != Some(false) {
             errors.push(ItemError {
                 code: "overwrite_ancestor",
-                message: format!("`{}` and `{}` are nested; not merged", source.display(), target.display()),
+                message: format!(
+                    "`{}` and `{}` are nested; not merged",
+                    source.display(),
+                    target.display()
+                ),
             });
             return;
         }
@@ -334,7 +341,9 @@ fn merge_dir(kind: TransferKind, source: &Path, target: &Path, errors: &mut Vec<
                 let child_target = target.join(entry.file_name());
                 if entry_exists(&child_target) {
                     overwrite_entry(kind, &child_source, is_dir, &child_target, errors);
-                } else if let Err(item_error) = run_transfer_item(kind, &child_source, &child_target) {
+                } else if let Err(item_error) =
+                    run_transfer_item(kind, &child_source, &child_target)
+                {
                     errors.push(item_error);
                 }
             }
@@ -454,7 +463,10 @@ fn overwrite_refusal(
     same_entity_result: Option<bool>,
 ) -> Option<(&'static str, &'static str)> {
     if same_entity_result.is_none() {
-        return Some(("io_error", "cannot verify that the destination is a different item; not overwritten"));
+        return Some((
+            "io_error",
+            "cannot verify that the destination is a different item; not overwritten",
+        ));
     }
     match is_strictly_within(target, item) {
         Some(false) => None,
@@ -462,7 +474,10 @@ fn overwrite_refusal(
             "overwrite_ancestor",
             "the source is inside the item to be overwritten; not overwritten",
         )),
-        None => Some(("io_error", "cannot verify the overwrite target; not overwritten")),
+        None => Some((
+            "io_error",
+            "cannot verify the overwrite target; not overwritten",
+        )),
     }
 }
 
@@ -589,7 +604,11 @@ fn run_transfer_batch_with_progress(
         // progress event, see struct doc), do not count as a failure, and
         // above all never delete/overwrite it. `None` = identity could not
         // be determined; that only blocks the destructive `Overwrite` below.
-        let same_entity_result = if target_exists { same_entity(item, &target) } else { Some(false) };
+        let same_entity_result = if target_exists {
+            same_entity(item, &target)
+        } else {
+            Some(false)
+        };
         if same_entity_result == Some(true) {
             summary.skipped += 1;
             continue;
@@ -615,7 +634,15 @@ fn run_transfer_batch_with_progress(
         });
 
         if !entry_exists(item) {
-            record_failure(&mut summary, &mut on_event, item, name, index, "not_found", "source not found".to_string());
+            record_failure(
+                &mut summary,
+                &mut on_event,
+                item,
+                name,
+                index,
+                "not_found",
+                "source not found".to_string(),
+            );
             continue;
         }
 
@@ -627,7 +654,15 @@ fn run_transfer_batch_with_progress(
                     // generic `conflict`.
                     let (code, message) = overwrite_refusal(&target, item, same_entity_result)
                         .unwrap_or(("conflict", "destination already exists"));
-                    record_failure(&mut summary, &mut on_event, item, name, index, code, message.to_string());
+                    record_failure(
+                        &mut summary,
+                        &mut on_event,
+                        item,
+                        name,
+                        index,
+                        code,
+                        message.to_string(),
+                    );
                     continue;
                 }
                 ConflictResolution::Skip => {
@@ -640,7 +675,15 @@ fn run_transfer_batch_with_progress(
                     // identity cannot be established, do not overwrite.
                     let refusal = overwrite_refusal(&target, item, same_entity_result);
                     if let Some((code, message)) = refusal {
-                        record_failure(&mut summary, &mut on_event, item, name, index, code, message.to_string());
+                        record_failure(
+                            &mut summary,
+                            &mut on_event,
+                            item,
+                            name,
+                            index,
+                            code,
+                            message.to_string(),
+                        );
                         continue;
                     }
 
@@ -658,7 +701,15 @@ fn run_transfer_batch_with_progress(
                             });
                         }
                         Some(first) => {
-                            record_failure(&mut summary, &mut on_event, item, name, index, first.code, first.message);
+                            record_failure(
+                                &mut summary,
+                                &mut on_event,
+                                item,
+                                name,
+                                index,
+                                first.code,
+                                first.message,
+                            );
                         }
                     }
                     continue;
@@ -678,7 +729,15 @@ fn run_transfer_batch_with_progress(
                 });
             }
             Err(item_error) => {
-                record_failure(&mut summary, &mut on_event, item, name, index, item_error.code, item_error.message);
+                record_failure(
+                    &mut summary,
+                    &mut on_event,
+                    item,
+                    name,
+                    index,
+                    item_error.code,
+                    item_error.message,
+                );
             }
         }
     }
@@ -698,7 +757,14 @@ pub fn copy_batch_with_progress(
     should_cancel: impl FnMut() -> bool,
     on_event: impl FnMut(ProgressEvent),
 ) -> OpSummary {
-    run_transfer_batch_with_progress(TransferKind::Copy, items, destination, |_| resolution, should_cancel, on_event)
+    run_transfer_batch_with_progress(
+        TransferKind::Copy,
+        items,
+        destination,
+        |_| resolution,
+        should_cancel,
+        on_event,
+    )
 }
 
 /// R-21/R-23/R-40~R-44: batch move into `destination` — rename first,
@@ -712,7 +778,14 @@ pub fn move_batch_with_progress(
     should_cancel: impl FnMut() -> bool,
     on_event: impl FnMut(ProgressEvent),
 ) -> OpSummary {
-    run_transfer_batch_with_progress(TransferKind::Move, items, destination, |_| resolution, should_cancel, on_event)
+    run_transfer_batch_with_progress(
+        TransferKind::Move,
+        items,
+        destination,
+        |_| resolution,
+        should_cancel,
+        on_event,
+    )
 }
 
 /// R-34-2: like `copy_batch_with_progress`, but each top-level item gets its
@@ -726,7 +799,14 @@ pub fn copy_batch_with_resolver(
     should_cancel: impl FnMut() -> bool,
     on_event: impl FnMut(ProgressEvent),
 ) -> OpSummary {
-    run_transfer_batch_with_progress(TransferKind::Copy, items, destination, resolver, should_cancel, on_event)
+    run_transfer_batch_with_progress(
+        TransferKind::Copy,
+        items,
+        destination,
+        resolver,
+        should_cancel,
+        on_event,
+    )
 }
 
 /// R-34-2: the move counterpart of `copy_batch_with_resolver`.
@@ -737,17 +817,32 @@ pub fn move_batch_with_resolver(
     should_cancel: impl FnMut() -> bool,
     on_event: impl FnMut(ProgressEvent),
 ) -> OpSummary {
-    run_transfer_batch_with_progress(TransferKind::Move, items, destination, resolver, should_cancel, on_event)
+    run_transfer_batch_with_progress(
+        TransferKind::Move,
+        items,
+        destination,
+        resolver,
+        should_cancel,
+        on_event,
+    )
 }
 
 /// R-21: batch copy into `destination` (recursive for directories, R-20).
-pub fn copy_batch(items: &[PathBuf], destination: &Path, resolution: ConflictResolution) -> OpSummary {
+pub fn copy_batch(
+    items: &[PathBuf],
+    destination: &Path,
+    resolution: ConflictResolution,
+) -> OpSummary {
     copy_batch_with_progress(items, destination, resolution, || false, |_| {})
 }
 
 /// R-21/R-23: batch move into `destination` — rename first, falling back to
 /// recursive-copy-then-remove on failure (e.g. a cross-device move).
-pub fn move_batch(items: &[PathBuf], destination: &Path, resolution: ConflictResolution) -> OpSummary {
+pub fn move_batch(
+    items: &[PathBuf],
+    destination: &Path,
+    resolution: ConflictResolution,
+) -> OpSummary {
     move_batch_with_progress(items, destination, resolution, || false, |_| {})
 }
 
@@ -777,7 +872,10 @@ pub struct Conflict {
 /// `OverwriteAncestor` (which takes precedence over a plain kind mismatch).
 /// Items that do not exist are not reported (the transfer itself reports
 /// `not_found`). Destination problems are reported with the preflight codes.
-pub fn detect_conflicts(items: &[PathBuf], destination: &Path) -> Result<Vec<Conflict>, TransferPreflightError> {
+pub fn detect_conflicts(
+    items: &[PathBuf],
+    destination: &Path,
+) -> Result<Vec<Conflict>, TransferPreflightError> {
     if items.is_empty() {
         return Err(TransferPreflightError::NoItems);
     }
@@ -793,7 +891,9 @@ pub fn detect_conflicts(items: &[PathBuf], destination: &Path) -> Result<Vec<Con
 
     let mut conflicts = Vec::new();
     for item in items {
-        let Some(file_name) = item.file_name() else { continue };
+        let Some(file_name) = item.file_name() else {
+            continue;
+        };
         let target = destination.join(file_name);
         if !entry_exists(&target) || !entry_exists(item) {
             continue;
@@ -829,7 +929,12 @@ pub fn copy_batch_with_item_resolutions(
     copy_batch_with_resolver(
         items,
         destination,
-        |item| item_resolutions.get(item).copied().unwrap_or(default_resolution),
+        |item| {
+            item_resolutions
+                .get(item)
+                .copied()
+                .unwrap_or(default_resolution)
+        },
         || false,
         |_| {},
     )
@@ -864,7 +969,11 @@ mod tests {
         fs::create_dir_all(&nested_destination).expect("create nested dirs");
         write_file(&source_dir, "top.txt", b"1");
 
-        let summary = copy_batch(&[source_dir.clone()], &nested_destination, ConflictResolution::Reject);
+        let summary = copy_batch(
+            &[source_dir.clone()],
+            &nested_destination,
+            ConflictResolution::Reject,
+        );
 
         assert_eq!(summary.ok, 0);
         assert_eq!(summary.failed, 1);
@@ -902,7 +1011,10 @@ mod tests {
         // parent triggers a runaway recursive copy").
         assert_eq!(summary.ok, 0);
         assert_eq!(summary.failed, 2);
-        assert!(summary.failures.iter().all(|f| f.code == "destination_inside_source"));
+        assert!(summary
+            .failures
+            .iter()
+            .all(|f| f.code == "destination_inside_source"));
         assert!(!nested_destination.join("parent").exists());
     }
 
@@ -920,7 +1032,9 @@ mod tests {
         assert_eq!(summary.total, 0);
         assert_eq!(summary.ok, 0);
         assert_eq!(summary.failed, 0);
-        let entries: Vec<_> = fs::read_dir(&destination).expect("read destination").collect();
+        let entries: Vec<_> = fs::read_dir(&destination)
+            .expect("read destination")
+            .collect();
         assert!(entries.is_empty());
     }
 
@@ -938,7 +1052,10 @@ mod tests {
         assert_eq!(summary.ok, 1);
         assert_eq!(summary.failed, 0);
         assert!(source.exists(), "source must still exist after copy");
-        assert!(destination.join("a.txt").exists(), "copy must land at destination");
+        assert!(
+            destination.join("a.txt").exists(),
+            "copy must land at destination"
+        );
     }
 
     // SPEC-0300-0011 AC-09 (R-02, R-20): moving a single file removes the
@@ -954,8 +1071,14 @@ mod tests {
 
         assert_eq!(summary.ok, 1);
         assert_eq!(summary.failed, 0);
-        assert!(!source.exists(), "source must be gone after a successful move");
-        assert!(destination.join("a.txt").exists(), "moved file must land at destination");
+        assert!(
+            !source.exists(),
+            "source must be gone after a successful move"
+        );
+        assert!(
+            destination.join("a.txt").exists(),
+            "moved file must land at destination"
+        );
     }
 
     // SPEC-0300-0011 AC-10 (R-20): copying a directory recursively copies
@@ -970,11 +1093,19 @@ mod tests {
         fs::write(source_dir.join("top.txt"), b"1").expect("write top.txt");
         fs::write(source_dir.join("nested").join("deep.txt"), b"2").expect("write deep.txt");
 
-        let summary = copy_batch(&[source_dir.clone()], &destination, ConflictResolution::Reject);
+        let summary = copy_batch(
+            &[source_dir.clone()],
+            &destination,
+            ConflictResolution::Reject,
+        );
 
         assert_eq!(summary.ok, 1);
         assert!(destination.join("src_dir").join("top.txt").exists());
-        assert!(destination.join("src_dir").join("nested").join("deep.txt").exists());
+        assert!(destination
+            .join("src_dir")
+            .join("nested")
+            .join("deep.txt")
+            .exists());
         // Recursive copy must not remove the original.
         assert!(source_dir.join("nested").join("deep.txt").exists());
     }
@@ -1007,7 +1138,11 @@ mod tests {
         let fallback_result: Option<Result<(), String>> = Some(Ok(()));
 
         let outcome = resolve_move_item_outcome(rename_result, fallback_result);
-        assert_eq!(outcome, Ok(()), "R-23: a successful fallback must be reported as Ok, not the original rename error");
+        assert_eq!(
+            outcome,
+            Ok(()),
+            "R-23: a successful fallback must be reported as Ok, not the original rename error"
+        );
     }
 
     // SPEC-0300-0011 AC-13 (R-23): when the fallback itself also fails
@@ -1019,7 +1154,10 @@ mod tests {
         let fallback_result: Option<Result<(), String>> = Some(Err("disk full".to_string()));
 
         let outcome = resolve_move_item_outcome(rename_result, fallback_result);
-        assert!(outcome.is_err(), "a failed fallback must be reported as a failure");
+        assert!(
+            outcome.is_err(),
+            "a failed fallback must be reported as a failure"
+        );
     }
 
     // A plain successful rename (no fallback attempted) is reported as a
@@ -1042,8 +1180,14 @@ mod tests {
         // Pasting into the very directory that already contains the item.
         let summary = copy_batch(&[source], dir.path(), ConflictResolution::Reject);
 
-        assert_eq!(summary.failed, 0, "R-25 exclusion must not be counted as a failure");
-        assert_eq!(summary.skipped, 1, "R-25 exclusion must be reflected in the skipped/excluded count");
+        assert_eq!(
+            summary.failed, 0,
+            "R-25 exclusion must not be counted as a failure"
+        );
+        assert_eq!(
+            summary.skipped, 1,
+            "R-25 exclusion must be reflected in the skipped/excluded count"
+        );
     }
 
     // SPEC-0300-0011 AC-18 (R-22): the batch result exposes ok/failed/total
@@ -1108,7 +1252,8 @@ mod tests {
         // destination right before this call — there is no separate
         // "known entries" listing passed into copy_batch for it to be
         // stale against; detection must be against the real filesystem.
-        fs::write(destination.join("a.txt"), b"just created by someone else").expect("seed conflict");
+        fs::write(destination.join("a.txt"), b"just created by someone else")
+            .expect("seed conflict");
 
         let summary = copy_batch(&[source], &destination, ConflictResolution::Reject);
 
@@ -1130,7 +1275,10 @@ mod tests {
         let summary = copy_batch(&[source], &destination, ConflictResolution::Overwrite);
 
         assert_eq!(summary.ok, 1);
-        assert_eq!(fs::read(destination.join("a.txt")).expect("read destination"), b"new");
+        assert_eq!(
+            fs::read(destination.join("a.txt")).expect("read destination"),
+            b"new"
+        );
     }
 
     // SPEC-0300-0011 AC-21 (R-31 "skip"): given an explicit Skip
@@ -1151,8 +1299,14 @@ mod tests {
             ConflictResolution::Skip,
         );
 
-        assert_eq!(fs::read(destination.join("a.txt")).expect("read destination"), b"old");
-        assert!(destination.join("b.txt").exists(), "the non-conflicting item must still be processed");
+        assert_eq!(
+            fs::read(destination.join("a.txt")).expect("read destination"),
+            b"old"
+        );
+        assert!(
+            destination.join("b.txt").exists(),
+            "the non-conflicting item must still be processed"
+        );
         assert_eq!(summary.failed, 0, "a skip is not a failure");
     }
 
@@ -1167,7 +1321,11 @@ mod tests {
         let missing_source = dir.path().join("missing.txt");
         let good_source = write_file(dir.path(), "good.txt", b"1");
 
-        let summary = copy_batch(&[missing_source, good_source], &destination, ConflictResolution::Reject);
+        let summary = copy_batch(
+            &[missing_source, good_source],
+            &destination,
+            ConflictResolution::Reject,
+        );
 
         assert_eq!(summary.ok, 1);
         assert_eq!(summary.failed, 1);
@@ -1195,7 +1353,11 @@ mod tests {
         );
 
         assert_eq!(summary.ok, 1);
-        assert_eq!(events.len(), 2, "expected exactly one Start and one Done event");
+        assert_eq!(
+            events.len(),
+            2,
+            "expected exactly one Start and one Done event"
+        );
         assert_eq!(events[0].kind, ProgressEventKind::Start);
         assert_eq!(events[0].name, "a.txt");
         assert_eq!(events[0].index, 1);
@@ -1250,7 +1412,10 @@ mod tests {
         );
 
         assert_eq!(summary.skipped, 1);
-        assert!(events.is_empty(), "an excluded item must emit no Start/Done/Fail event");
+        assert!(
+            events.is_empty(),
+            "an excluded item must emit no Start/Done/Fail event"
+        );
     }
 
     // R-43/R-44 (the scenario from the task description): given a 4-item
@@ -1286,8 +1451,14 @@ mod tests {
             },
         );
 
-        assert_eq!(summary.ok, 2, "the first two items must have completed normally");
-        assert_eq!(summary.failed, 2, "the remaining two items must be reported as failed (canceled)");
+        assert_eq!(
+            summary.ok, 2,
+            "the first two items must have completed normally"
+        );
+        assert_eq!(
+            summary.failed, 2,
+            "the remaining two items must be reported as failed (canceled)"
+        );
         assert!(
             summary
                 .failures
@@ -1299,17 +1470,37 @@ mod tests {
 
         // R-43: canceled items must never be touched — no Start event, and
         // no actual filesystem side effect.
-        let fail_events: Vec<&ProgressEvent> = events.iter().filter(|e| e.code.as_deref() == Some("canceled")).collect();
+        let fail_events: Vec<&ProgressEvent> = events
+            .iter()
+            .filter(|e| e.code.as_deref() == Some("canceled"))
+            .collect();
         assert_eq!(fail_events.len(), 2);
-        assert!(fail_events.iter().all(|e| e.kind == ProgressEventKind::Fail));
+        assert!(fail_events
+            .iter()
+            .all(|e| e.kind == ProgressEventKind::Fail));
         assert!(
-            !events.iter().any(|e| e.kind == ProgressEventKind::Start && (e.name == "c.txt" || e.name == "d.txt")),
+            !events
+                .iter()
+                .any(|e| e.kind == ProgressEventKind::Start
+                    && (e.name == "c.txt" || e.name == "d.txt")),
             "a canceled item must never emit a Start event"
         );
-        assert!(c.exists(), "a canceled item's source must be left untouched");
-        assert!(d.exists(), "a canceled item's source must be left untouched");
-        assert!(!destination.join("c.txt").exists(), "a canceled item must not be copied to the destination");
-        assert!(!destination.join("d.txt").exists(), "a canceled item must not be copied to the destination");
+        assert!(
+            c.exists(),
+            "a canceled item's source must be left untouched"
+        );
+        assert!(
+            d.exists(),
+            "a canceled item's source must be left untouched"
+        );
+        assert!(
+            !destination.join("c.txt").exists(),
+            "a canceled item must not be copied to the destination"
+        );
+        assert!(
+            !destination.join("d.txt").exists(),
+            "a canceled item must not be copied to the destination"
+        );
     }
 
     // R-43: cancellation is checked at the very first item boundary too —

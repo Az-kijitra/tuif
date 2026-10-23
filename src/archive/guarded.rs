@@ -15,7 +15,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::create::{check_create, create_zip, resolve_output_path, CheckedCreate, CreateHooks, CreateResult};
+use super::create::{
+    check_create, create_zip, resolve_output_path, CheckedCreate, CreateHooks, CreateResult,
+};
 use super::error::{ArchiveError, ArchiveErrorCode as Code, ArchiveErrorDto};
 use super::extract::{extract, ExtractHooks, ExtractResult, Resolution};
 use super::extract_plan::{build_plan, join_destination, ExtractEnv, Plan};
@@ -25,7 +27,11 @@ use crate::shared::e2e_scope::{self, ScopeViolation, VIOLATION_CODE};
 
 /// Debug-only E2E scope refusal (SPEC-0400-0001 R-10-3): rejected before anything is read or written.
 pub(super) fn scope_error(violation: ScopeViolation) -> ArchiveErrorDto {
-    ArchiveErrorDto { code: VIOLATION_CODE.to_string(), message: violation.0, entry_path: None }
+    ArchiveErrorDto {
+        code: VIOLATION_CODE.to_string(),
+        message: violation.0,
+        entry_path: None,
+    }
 }
 
 /// Path text for the UI: no `\?\` prefix (SHOULD-90).
@@ -50,7 +56,8 @@ pub fn check_create_guarded(
     if items.is_empty() {
         return Err(ArchiveError::new(Code::NoItems, "nothing is selected").into());
     }
-    if let Some(bad) = abs_path::first_relative(items.iter().map(String::as_str).chain([base_dir])) {
+    if let Some(bad) = abs_path::first_relative(items.iter().map(String::as_str).chain([base_dir]))
+    {
         return Err(invalid_path(bad));
     }
     let output_input = normalize_input_separators(output_input);
@@ -59,7 +66,11 @@ pub fn check_create_guarded(
     if !abs_path::is_absolute_path_buf(&resolved) {
         return Err(invalid_path(&resolved.to_string_lossy()));
     }
-    Ok(check_create(&to_paths(items), &output_input, Path::new(base_dir))?)
+    Ok(check_create(
+        &to_paths(items),
+        &output_input,
+        Path::new(base_dir),
+    )?)
 }
 
 pub fn create_guarded(
@@ -72,7 +83,8 @@ pub fn create_guarded(
     if items.is_empty() {
         return Err(ArchiveError::new(Code::NoItems, "nothing is selected").into());
     }
-    if let Some(bad) = abs_path::first_relative(items.iter().map(String::as_str).chain([base_dir])) {
+    if let Some(bad) = abs_path::first_relative(items.iter().map(String::as_str).chain([base_dir]))
+    {
         return Err(invalid_path(bad));
     }
     let output_input = normalize_input_separators(output_input);
@@ -83,9 +95,18 @@ pub fn create_guarded(
     }
     // R-10: output folder = container; items and base_dir are read sources.
     e2e_scope::check_container(resolved.parent().unwrap_or(Path::new(""))).map_err(scope_error)?;
-    items.iter().try_for_each(|item| e2e_scope::check_source(Path::new(item))).map_err(scope_error)?;
+    items
+        .iter()
+        .try_for_each(|item| e2e_scope::check_source(Path::new(item)))
+        .map_err(scope_error)?;
     e2e_scope::check_source(Path::new(base_dir)).map_err(scope_error)?;
-    Ok(create_zip(&to_paths(items), &output_input, Path::new(base_dir), overwrite, hooks)?)
+    Ok(create_zip(
+        &to_paths(items),
+        &output_input,
+        Path::new(base_dir),
+        overwrite,
+        hooks,
+    )?)
 }
 
 pub fn detect_conflicts_guarded(
@@ -103,7 +124,12 @@ pub fn detect_conflicts_guarded(
     if !abs_path::is_absolute_path_buf(&joined) {
         return Err(invalid_path(&joined.to_string_lossy()));
     }
-    Ok(build_plan(Path::new(zip_path), Path::new(&dest_input), Path::new(base_dir), env)?)
+    Ok(build_plan(
+        Path::new(zip_path),
+        Path::new(&dest_input),
+        Path::new(base_dir),
+        env,
+    )?)
 }
 
 pub fn extract_guarded(
@@ -126,5 +152,12 @@ pub fn extract_guarded(
     // R-10: destination = container; the ZIP is a read source.
     e2e_scope::check_container(&joined).map_err(scope_error)?;
     e2e_scope::check_source(Path::new(zip_path)).map_err(scope_error)?;
-    Ok(extract(Path::new(zip_path), Path::new(&dest_input), Path::new(base_dir), env, resolutions, hooks)?)
+    Ok(extract(
+        Path::new(zip_path),
+        Path::new(&dest_input),
+        Path::new(base_dir),
+        env,
+        resolutions,
+        hooks,
+    )?)
 }

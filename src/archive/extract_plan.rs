@@ -37,7 +37,9 @@ pub struct ExtractEnv<'a> {
 impl ExtractEnv<'static> {
     /// The production environment (`win_fs::free_space`).
     pub fn real() -> ExtractEnv<'static> {
-        ExtractEnv { free_space: &win_fs::free_space }
+        ExtractEnv {
+            free_space: &win_fs::free_space,
+        }
     }
 }
 
@@ -90,8 +92,10 @@ pub(super) fn ensure_same_name(crate_name: &[u8], scanned_name: &[u8]) -> Result
     if crate_name == scanned_name {
         return Ok(());
     }
-    Err(ArchiveError::new(Code::ZipCorrupt, "the entry table is inconsistent")
-        .with_entry(String::from_utf8_lossy(scanned_name).into_owned()))
+    Err(
+        ArchiveError::new(Code::ZipCorrupt, "the entry table is inconsistent")
+            .with_entry(String::from_utf8_lossy(scanned_name).into_owned()),
+    )
 }
 
 fn io_failure(err: &io::Error) -> ArchiveError {
@@ -101,29 +105,47 @@ fn io_failure(err: &io::Error) -> ArchiveError {
 /// R-341-1 / R-343-1 (pure: no filesystem access): the first half of `resolve_destination`. Empty ->
 /// `invalid_path`; absolute -> as given; drive-relative / root-relative -> `invalid_path`; relative -> joined
 /// to `base_dir` (which must itself be absolute).
-pub(crate) fn join_destination(destination: &Path, base_dir: &Path) -> Result<PathBuf, ArchiveError> {
+pub(crate) fn join_destination(
+    destination: &Path,
+    base_dir: &Path,
+) -> Result<PathBuf, ArchiveError> {
     let has_prefix = matches!(destination.components().next(), Some(Component::Prefix(_)));
     if destination.as_os_str().is_empty() {
-        Err(ArchiveError::new(Code::InvalidPath, "the destination is empty"))
+        Err(ArchiveError::new(
+            Code::InvalidPath,
+            "the destination is empty",
+        ))
     } else if destination.is_absolute() {
         Ok(destination.to_path_buf())
     } else if destination.has_root() || has_prefix {
-        Err(ArchiveError::new(Code::InvalidPath, "a drive-relative or root-relative destination is ambiguous"))
+        Err(ArchiveError::new(
+            Code::InvalidPath,
+            "a drive-relative or root-relative destination is ambiguous",
+        ))
     } else if base_dir.is_absolute() {
         Ok(base_dir.join(destination))
     } else {
-        Err(ArchiveError::new(Code::InvalidPath, "the base directory is not an absolute path"))
+        Err(ArchiveError::new(
+            Code::InvalidPath,
+            "the base directory is not an absolute path",
+        ))
     }
 }
 
 /// R-341-1 / R-343-1 / R-343-2: resolves `destination` against `base_dir`,
 /// rejects an existing non-directory and normalizes (the missing tail gets the
 /// R-363 checks). Shared by `build_plan` and the re-check in `extract`.
-pub(crate) fn resolve_destination(destination: &Path, base_dir: &Path) -> Result<PathBuf, ArchiveError> {
+pub(crate) fn resolve_destination(
+    destination: &Path,
+    base_dir: &Path,
+) -> Result<PathBuf, ArchiveError> {
     let joined = join_destination(destination, base_dir)?;
     if let Ok(meta) = fs::metadata(&joined) {
         if !meta.is_dir() {
-            return Err(ArchiveError::new(Code::DestinationNotDir, "the destination is an existing file"));
+            return Err(ArchiveError::new(
+                Code::DestinationNotDir,
+                "the destination is an existing file",
+            ));
         }
     }
     let normalized = normalize_allowing_missing(&joined)
@@ -143,7 +165,11 @@ pub(crate) fn resolve_destination(destination: &Path, base_dir: &Path) -> Result
     for component in tail {
         match validate_entry_name(&component) {
             Ok(parts) if parts.len() == 1 && parts[0] == component => {}
-            _ => return Err(rejected(format!("the destination folder name `{component}` is not allowed"))),
+            _ => {
+                return Err(rejected(format!(
+                    "the destination folder name `{component}` is not allowed"
+                )))
+            }
         }
     }
     Ok(normalized)
@@ -163,8 +189,12 @@ struct RawEntry {
 fn read_entries(zip_path: &Path) -> Result<Vec<RawEntry>, ArchiveError> {
     let info = eocd::inspect(zip_path)?;
     let file = File::open(zip_path).map_err(|e| io_failure(&e))?;
-    let mut archive = zip::ZipArchive::new(BufReader::new(file))
-        .map_err(|e| ArchiveError::new(classify_zip_error(&e), format!("cannot read the ZIP archive: {e}")))?;
+    let mut archive = zip::ZipArchive::new(BufReader::new(file)).map_err(|e| {
+        ArchiveError::new(
+            classify_zip_error(&e),
+            format!("cannot read the ZIP archive: {e}"),
+        )
+    })?;
     let declared = usize::try_from(info.total_entries).unwrap_or(usize::MAX);
 
     let mut scan_file = File::open(zip_path).map_err(|e| io_failure(&e))?;
@@ -184,8 +214,11 @@ fn read_entries(zip_path: &Path) -> Result<Vec<RawEntry>, ArchiveError> {
         let entry_label = String::from_utf8_lossy(&record.name_raw).into_owned();
         // R-362 #3: bit 0 or method 99 (AES is invisible to the crate without bit 0).
         if record.flags & 0x0001 != 0 || record.method == 99 {
-            return Err(ArchiveError::new(Code::ZipEncrypted, "the archive contains an encrypted entry")
-                .with_entry(entry_label));
+            return Err(ArchiveError::new(
+                Code::ZipEncrypted,
+                "the archive contains an encrypted entry",
+            )
+            .with_entry(entry_label));
         }
         // R-362 #2: only Stored (0) and Deflate (8).
         if record.method != 0 && record.method != 8 {
@@ -195,15 +228,19 @@ fn read_entries(zip_path: &Path) -> Result<Vec<RawEntry>, ArchiveError> {
             )
             .with_entry(entry_label));
         }
-        let file = archive
-            .by_index_raw(index)
-            .map_err(|e| ArchiveError::new(classify_zip_error(&e), format!("cannot read entry: {e}")).with_entry(entry_label.clone()))?;
+        let file = archive.by_index_raw(index).map_err(|e| {
+            ArchiveError::new(classify_zip_error(&e), format!("cannot read entry: {e}"))
+                .with_entry(entry_label.clone())
+        })?;
         ensure_same_name(file.name_raw(), &record.name_raw)?;
         // R-362 #6: symbolic-link entries.
         if file.is_symlink() {
-            return Err(rejected("the archive contains a symbolic link entry").with_entry(entry_label));
+            return Err(
+                rejected("the archive contains a symbolic link entry").with_entry(entry_label)
+            );
         }
-        let name = resolve_entry_name(file.name_raw(), record.flags & 0x0800 != 0).map_err(|e| e.with_entry(entry_label))?;
+        let name = resolve_entry_name(file.name_raw(), record.flags & 0x0800 != 0)
+            .map_err(|e| e.with_entry(entry_label))?;
         let is_dir = name.ends_with('/') || name.ends_with('\\');
         entries.push(RawEntry {
             name,
@@ -268,7 +305,12 @@ pub fn build_plan(
     // 1
     match fs::metadata(zip_path) {
         Ok(meta) if meta.is_file() => {}
-        Ok(_) => return Err(ArchiveError::new(Code::NotFound, "the ZIP path is not a file")),
+        Ok(_) => {
+            return Err(ArchiveError::new(
+                Code::NotFound,
+                "the ZIP path is not a file",
+            ))
+        }
         Err(e) => return Err(io_failure(&e)),
     }
     let destination = resolve_destination(destination, base_dir)?;
@@ -284,8 +326,10 @@ pub fn build_plan(
             ArchiveError::new(code, "the entry name is not allowed").with_entry(raw.name.clone())
         })?;
         let entry_path = components.join("/");
-        check_path_lengths(&destination_text, &components, raw.is_dir)
-            .map_err(|code| ArchiveError::new(code, "the extracted path would be too long").with_entry(entry_path.clone()))?;
+        check_path_lengths(&destination_text, &components, raw.is_dir).map_err(|code| {
+            ArchiveError::new(code, "the extracted path would be too long")
+                .with_entry(entry_path.clone())
+        })?;
         let mut target = destination.clone();
         for component in &components {
             target.push(component);
@@ -315,7 +359,14 @@ pub fn build_plan(
     // 7
     let conflicts = check_targets(zip_path, &destination, &entries)?;
 
-    Ok(Plan { zip_path: zip_path.to_path_buf(), destination, total_entries, total_uncompressed, entries, conflicts })
+    Ok(Plan {
+        zip_path: zip_path.to_path_buf(),
+        destination,
+        total_entries,
+        total_uncompressed,
+        entries,
+        conflicts,
+    })
 }
 
 /// R-364 / R-364-1 / R-364-2 with the case-folded key of `path_rules::fold_key`.
@@ -331,14 +382,18 @@ fn check_duplicates(entries: &[PlanEntry]) -> Result<(), ArchiveError> {
         if entry.is_dir {
             dir_keys.insert(key);
         } else if file_keys.insert(key, entry).is_some() {
-            return Err(rejected("the archive contains the same file name twice (letter case ignored)")
-                .with_entry(entry.entry_path.clone()));
+            return Err(rejected(
+                "the archive contains the same file name twice (letter case ignored)",
+            )
+            .with_entry(entry.entry_path.clone()));
         }
     }
     for (key, entry) in &file_keys {
         if dir_keys.contains(key) {
-            return Err(rejected("the archive contains a file and a folder with the same name")
-                .with_entry(entry.entry_path.clone()));
+            return Err(
+                rejected("the archive contains a file and a folder with the same name")
+                    .with_entry(entry.entry_path.clone()),
+            );
         }
     }
     Ok(())
@@ -356,12 +411,20 @@ fn check_limits(entries: &[PlanEntry]) -> Result<u64, ArchiveError> {
         }
         if entry.method == 0 {
             if compressed != uncompressed {
-                return Err(ArchiveError::new(Code::ZipCorrupt, "a stored entry declares different compressed and uncompressed sizes")
-                    .with_entry(entry.entry_path.clone()));
-            }
-        } else if (compressed == 0 && uncompressed > 0) || uncompressed > compressed.saturating_mul(MAX_DEFLATE_RATIO) {
-            return Err(ArchiveError::new(Code::ZipCorrupt, "the declared compression ratio is implausible")
+                return Err(ArchiveError::new(
+                    Code::ZipCorrupt,
+                    "a stored entry declares different compressed and uncompressed sizes",
+                )
                 .with_entry(entry.entry_path.clone()));
+            }
+        } else if (compressed == 0 && uncompressed > 0)
+            || uncompressed > compressed.saturating_mul(MAX_DEFLATE_RATIO)
+        {
+            return Err(ArchiveError::new(
+                Code::ZipCorrupt,
+                "the declared compression ratio is implausible",
+            )
+            .with_entry(entry.entry_path.clone()));
         }
     }
     if overflowed || total > MAX_TOTAL_UNCOMPRESSED {
@@ -391,7 +454,11 @@ fn check_free_space(destination: &Path, total: u64, env: &ExtractEnv) -> Result<
 }
 
 /// Step 7: what already exists at the final paths.
-fn check_targets(zip_path: &Path, destination: &Path, entries: &[PlanEntry]) -> Result<Vec<String>, ArchiveError> {
+fn check_targets(
+    zip_path: &Path,
+    destination: &Path,
+    entries: &[PlanEntry],
+) -> Result<Vec<String>, ArchiveError> {
     let mut conflicts = Vec::new();
     // Nothing can exist below a destination that does not exist yet.
     if fs::symlink_metadata(destination).is_err() {
@@ -413,22 +480,32 @@ fn check_targets(zip_path: &Path, destination: &Path, entries: &[PlanEntry]) -> 
         if kind.is_symlink() {
             // R-367: a link at the final name (whatever it points to, or not).
             let inside_dir = entry.is_dir
-                && fs::canonicalize(&entry.target).map(|c| c.is_dir() && c.starts_with(destination)).unwrap_or(false);
+                && fs::canonicalize(&entry.target)
+                    .map(|c| c.is_dir() && c.starts_with(destination))
+                    .unwrap_or(false);
             if !inside_dir {
-                return Err(rejected("a link exists at the extraction path").with_entry(entry.entry_path.clone()));
+                return Err(rejected("a link exists at the extraction path")
+                    .with_entry(entry.entry_path.clone()));
             }
         } else if kind.is_dir() {
             if !entry.is_dir {
-                return Err(ArchiveError::new(Code::Conflict, "a folder exists where a file would be extracted")
-                    .with_entry(entry.entry_path.clone()));
+                return Err(ArchiveError::new(
+                    Code::Conflict,
+                    "a folder exists where a file would be extracted",
+                )
+                .with_entry(entry.entry_path.clone()));
             }
         } else if entry.is_dir {
-            return Err(ArchiveError::new(Code::Conflict, "a file exists where a folder would be created")
-                .with_entry(entry.entry_path.clone()));
+            return Err(ArchiveError::new(
+                Code::Conflict,
+                "a file exists where a folder would be created",
+            )
+            .with_entry(entry.entry_path.clone()));
         } else {
             // R-367-1 / MUST-65: only an EXISTING final path can be the ZIP itself.
             if same_entity(&entry.target, zip_path) != Some(false) {
-                return Err(rejected("the entry would overwrite the archive itself").with_entry(entry.entry_path.clone()));
+                return Err(rejected("the entry would overwrite the archive itself")
+                    .with_entry(entry.entry_path.clone()));
             }
             conflicts.push(entry.entry_path.clone());
         }
@@ -445,13 +522,21 @@ fn check_parent(parent: &Path, destination: &Path, entry_path: &str) -> Result<(
             return Ok(());
         }
     }
-    let canonical = fs::canonicalize(&probe)
-        .map_err(|_| rejected("a link on the extraction path cannot be resolved").with_entry(entry_path))?;
+    let canonical = fs::canonicalize(&probe).map_err(|_| {
+        rejected("a link on the extraction path cannot be resolved").with_entry(entry_path)
+    })?;
     if !canonical.starts_with(destination) {
-        return Err(rejected("a link on the extraction path leads outside the destination").with_entry(entry_path));
+        return Err(
+            rejected("a link on the extraction path leads outside the destination")
+                .with_entry(entry_path),
+        );
     }
     if !canonical.is_dir() {
-        return Err(ArchiveError::new(Code::Conflict, "a file exists where a folder would be created").with_entry(entry_path));
+        return Err(ArchiveError::new(
+            Code::Conflict,
+            "a file exists where a folder would be created",
+        )
+        .with_entry(entry_path));
     }
     Ok(())
 }

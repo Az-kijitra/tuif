@@ -17,9 +17,19 @@ fn r386_event_name_is_archive_progress() {
 
 #[test]
 fn dto_serializes_as_camel_case() {
-    let dto = ArchiveProgressDto { operation_id: "op-1".into(), name: "dir/a.txt".into(), index: 2, total: 5 };
+    let dto = ArchiveProgressDto {
+        operation_id: "op-1".into(),
+        name: "dir/a.txt".into(),
+        index: 2,
+        total: 5,
+    };
     let text = toml::to_string(&dto).expect("serialize");
-    for key in ["operationId = \"op-1\"", "name = \"dir/a.txt\"", "index = 2", "total = 5"] {
+    for key in [
+        "operationId = \"op-1\"",
+        "name = \"dir/a.txt\"",
+        "index = 2",
+        "total = 5",
+    ] {
         assert!(text.contains(key), "missing `{key}` in:\n{text}");
     }
     assert!(!text.contains("operation_id"), "{text}");

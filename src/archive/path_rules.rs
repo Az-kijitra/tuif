@@ -54,7 +54,9 @@ pub fn validate_entry_name(name: &str) -> Result<Vec<String>, ArchiveErrorCode> 
         if utf16_len(part) > MAX_COMPONENT_UTF16 {
             return Err(REJECTED);
         }
-        if part.chars().any(|c| c == ':' || matches!(c, '<' | '>' | '"' | '|' | '?' | '*') || (c as u32) < 0x20) {
+        if part.chars().any(|c| {
+            c == ':' || matches!(c, '<' | '>' | '"' | '|' | '?' | '*') || (c as u32) < 0x20
+        }) {
             return Err(REJECTED);
         }
         if part.ends_with('.') || part.ends_with(' ') {
@@ -76,9 +78,16 @@ pub fn validate_entry_name(name: &str) -> Result<Vec<String>, ArchiveErrorCode> 
 /// `CON PRN AUX NUL COM1-9 LPT1-9 CONIN$ CONOUT$` and the superscript forms
 /// `COM¹ COM² COM³ LPT¹ LPT² LPT³`.
 pub fn is_reserved_device_name(component: &str) -> bool {
-    let stem = component.split('.').next().unwrap_or("").trim_end_matches(' ');
+    let stem = component
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(' ');
     const PLAIN: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
-    if PLAIN.iter().any(|reserved| stem.eq_ignore_ascii_case(reserved)) {
+    if PLAIN
+        .iter()
+        .any(|reserved| stem.eq_ignore_ascii_case(reserved))
+    {
         return true;
     }
     for prefix in ["COM", "LPT"] {
@@ -104,7 +113,11 @@ pub fn is_reserved_device_name(component: &str) -> bool {
 /// 259 (file) / 247 (directory) UTF-16 units, and EVERY implied parent
 /// directory (`destination\c0`, `destination\c0\c1`, ...) at most 247.
 /// Violations are `ZipEntryRejected`.
-pub fn check_path_lengths(destination: &str, components: &[String], is_dir: bool) -> Result<(), ArchiveErrorCode> {
+pub fn check_path_lengths(
+    destination: &str,
+    components: &[String],
+    is_dir: bool,
+) -> Result<(), ArchiveErrorCode> {
     let base = strip_verbatim_prefix(destination);
     let mut length = utf16_len(&base);
     let mut ends_with_separator = base.ends_with('\\') || base.ends_with('/');
@@ -115,7 +128,11 @@ pub fn check_path_lengths(destination: &str, components: &[String], is_dir: bool
         ends_with_separator = false;
         length += utf16_len(component);
         let is_last = i + 1 == components.len();
-        let limit = if is_last && !is_dir { MAX_FILE_PATH_UTF16 } else { MAX_DIR_PATH_UTF16 };
+        let limit = if is_last && !is_dir {
+            MAX_FILE_PATH_UTF16
+        } else {
+            MAX_DIR_PATH_UTF16
+        };
         if length > limit {
             return Err(ArchiveErrorCode::ZipEntryRejected);
         }
@@ -153,7 +170,9 @@ pub fn has_unpaired_surrogate(units: &[u16]) -> bool {
 /// R-325 last row / SHOULD-96: a file name from the OS as UTF-8 for use as an
 /// entry name; an unpaired surrogate is `InvalidPath` (never lossy-converted).
 pub fn os_name_to_utf8(name: &OsStr) -> Result<String, ArchiveErrorCode> {
-    name.to_str().map(str::to_string).ok_or(ArchiveErrorCode::InvalidPath)
+    name.to_str()
+        .map(str::to_string)
+        .ok_or(ArchiveErrorCode::InvalidPath)
 }
 
 /// R-324: the output file name check (SPEC-0300-0011 R-62 duplicated here so
@@ -164,7 +183,10 @@ pub fn validate_output_file_name(name: &str) -> Result<(), ArchiveErrorCode> {
     if trimmed.is_empty() || trimmed == "." || trimmed == ".." {
         return Err(ArchiveErrorCode::InvalidName);
     }
-    if name.chars().any(|c| matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+    if name
+        .chars()
+        .any(|c| matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+    {
         return Err(ArchiveErrorCode::InvalidName);
     }
     Ok(())

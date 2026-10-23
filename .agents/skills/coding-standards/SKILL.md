@@ -3,7 +3,7 @@ name: coding-standards
 description: コード生成・実装レビュー時に適用するコーディング規約・lintルール・命名規則（Rust + Ratatui 版）。code-generator, code-reviewer, architecture-guardianなど実装に関わるAgentが作業前に参照すること。
 ---
 
-# コーディング規約 (`cuifiler`: Rust + Ratatui)
+# コーディング規約 (`tuif`: Rust + Ratatui)
 
 このプロジェクトの実装コードが従うべき規約。`cargo fmt` / `cargo clippy` の設定と矛盾する場合はツール設定を正とし、このドキュメントを更新すること。
 

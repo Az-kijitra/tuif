@@ -56,7 +56,10 @@ fn r450_step1_a_utf8_bom_is_stripped_and_labeled_bom() {
     bytes.extend_from_slice("hi".as_bytes());
     let payload = decode(&bytes, false);
     assert_eq!(payload.encoding, EncodingLabel::Utf8Bom);
-    assert_eq!(payload.content, "hi", "the BOM itself must not appear in content");
+    assert_eq!(
+        payload.content, "hi",
+        "the BOM itself must not appear in content"
+    );
 }
 
 #[test]
@@ -82,8 +85,14 @@ fn r450_step5_non_utf8_bytes_fall_back_to_cp932() {
     // "髙", not valid UTF-8 (SPEC-0300-0014 R-347's approach: valid UTF-8 wins,
     // otherwise CP932, R-450-3's WHATWG Shift_JIS decoder).
     let (bytes, _, had_errors) = encoding_rs::SHIFT_JIS.encode("①髙");
-    assert!(!had_errors, "test fixture: both characters must be representable in CP932");
-    assert!(std::str::from_utf8(&bytes).is_err(), "test fixture: must not accidentally be valid UTF-8");
+    assert!(
+        !had_errors,
+        "test fixture: both characters must be representable in CP932"
+    );
+    assert!(
+        std::str::from_utf8(&bytes).is_err(),
+        "test fixture: must not accidentally be valid UTF-8"
+    );
     let payload = decode(&bytes, false);
     assert_eq!(payload.encoding, EncodingLabel::ShiftJis);
     assert_eq!(payload.content, "①髙");
@@ -111,7 +120,11 @@ fn r450_1_an_undecodable_cp932_byte_becomes_u_fffd_and_decoding_continues() {
     bytes.extend_from_slice(b"-after");
     let payload = decode(&bytes, false);
     assert_eq!(payload.encoding, EncodingLabel::ShiftJis);
-    assert!(payload.content.contains('\u{FFFD}'), "content={:?}", payload.content);
+    assert!(
+        payload.content.contains('\u{FFFD}'),
+        "content={:?}",
+        payload.content
+    );
     assert!(payload.content.starts_with("before-"));
     assert!(payload.content.ends_with("-after"));
 }
@@ -127,9 +140,16 @@ fn r453_a_truncated_utf8_drops_an_incomplete_trailing_multibyte_sequence() {
     let mut bytes = b"ok-".to_vec();
     bytes.extend_from_slice(&[0xE3, 0x81]); // incomplete tail of "あ"
     let payload = decode(&bytes, true);
-    assert_eq!(payload.encoding, EncodingLabel::Utf8, "step4 must not be defeated by the incomplete tail");
+    assert_eq!(
+        payload.encoding,
+        EncodingLabel::Utf8,
+        "step4 must not be defeated by the incomplete tail"
+    );
     assert_eq!(payload.content, "ok-");
-    assert!(!payload.content.contains('\u{FFFD}'), "R-453(d): no replacement character for a dropped tail");
+    assert!(
+        !payload.content.contains('\u{FFFD}'),
+        "R-453(d): no replacement character for a dropped tail"
+    );
 }
 
 #[test]
@@ -173,13 +193,20 @@ fn r450_4_not_truncated_an_odd_byte_count_utf16le_keeps_the_byte_as_u_fffd() {
     let payload = decode(&bytes, false);
     assert_eq!(payload.encoding, EncodingLabel::Utf16Le);
     assert!(payload.content.starts_with('A'));
-    assert!(payload.content.contains('\u{FFFD}'), "content={:?}", payload.content);
+    assert!(
+        payload.content.contains('\u{FFFD}'),
+        "content={:?}",
+        payload.content
+    );
 }
 
 #[test]
 fn r453_c_truncated_cp932_drops_a_trailing_lead_byte_with_no_pair() {
     // AC-465: 0x93 is a valid CP932 lead byte; cut before its trailing byte.
-    let (mut bytes, _, _) = { let (b, e, h) = encoding_rs::SHIFT_JIS.encode("ok-"); (b.into_owned(), e, h) };
+    let (mut bytes, _, _) = {
+        let (b, e, h) = encoding_rs::SHIFT_JIS.encode("ok-");
+        (b.into_owned(), e, h)
+    };
     bytes.push(0x93); // lead byte only, no trailing byte
     let payload = decode(&bytes, true);
     assert_eq!(payload.encoding, EncodingLabel::ShiftJis);
@@ -190,7 +217,10 @@ fn r453_c_truncated_cp932_drops_a_trailing_lead_byte_with_no_pair() {
 #[test]
 fn r450_4_not_truncated_a_cp932_trailing_lead_byte_becomes_u_fffd() {
     // AC-464-1 (L-6): same lead-byte tail, file read in full -> U+FFFD, kept.
-    let (mut bytes, _, _) = { let (b, e, h) = encoding_rs::SHIFT_JIS.encode("ok-"); (b.into_owned(), e, h) };
+    let (mut bytes, _, _) = {
+        let (b, e, h) = encoding_rs::SHIFT_JIS.encode("ok-");
+        (b.into_owned(), e, h)
+    };
     bytes.push(0x93);
     let payload = decode(&bytes, false);
     assert_eq!(payload.encoding, EncodingLabel::ShiftJis);

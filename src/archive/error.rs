@@ -91,7 +91,11 @@ pub struct ArchiveError {
 
 impl ArchiveError {
     pub fn new(code: ArchiveErrorCode, message: impl Into<String>) -> Self {
-        ArchiveError { code, message: message.into(), entry_path: None }
+        ArchiveError {
+            code,
+            message: message.into(),
+            entry_path: None,
+        }
     }
 
     pub fn with_entry(mut self, entry_path: impl Into<String>) -> Self {
@@ -119,7 +123,11 @@ pub struct ArchiveErrorDto {
 
 impl From<ArchiveError> for ArchiveErrorDto {
     fn from(err: ArchiveError) -> Self {
-        ArchiveErrorDto { code: err.code.as_str().to_string(), message: err.message, entry_path: err.entry_path }
+        ArchiveErrorDto {
+            code: err.code.as_str().to_string(),
+            message: err.message,
+            entry_path: err.entry_path,
+        }
     }
 }
 
@@ -145,7 +153,12 @@ pub fn classify_zip_error(err: &zip::result::ZipError) -> ArchiveErrorCode {
     match err {
         ZipError::InvalidArchive(_) => ArchiveErrorCode::ZipCorrupt,
         ZipError::UnsupportedArchive(_) => ArchiveErrorCode::ZipUnsupported,
-        ZipError::Io(e) if matches!(e.kind(), std::io::ErrorKind::InvalidData | std::io::ErrorKind::UnexpectedEof) => {
+        ZipError::Io(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::InvalidData | std::io::ErrorKind::UnexpectedEof
+            ) =>
+        {
             ArchiveErrorCode::ZipCorrupt
         }
         ZipError::Io(e) => classify_io_error(e),

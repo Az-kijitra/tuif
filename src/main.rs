@@ -1,4 +1,4 @@
-//! `cuifiler` binary entry point (SPEC-0300-0001).
+//! `tuif` binary entry point (SPEC-0300-0001).
 //! Supports `--choosedir <FILE>` / `--cwd-file <FILE>` for PowerShell `cd on exit` integration.
 
 use std::env;
@@ -15,9 +15,9 @@ use crossterm::terminal::{
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
-use cuifiler::app::AppState;
-use cuifiler::external_apps::{run_fuzzy_finder, spawn_cui_blocking};
-use cuifiler::tui;
+use tuif::app::AppState;
+use tuif::external_apps::{run_fuzzy_finder, spawn_cui_blocking};
+use tuif::tui;
 
 struct CliArgs {
     start_dir: PathBuf,
@@ -72,7 +72,10 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
     if cli.show_help {
-        println!("tuif {} — Vim-like TUI File Manager for PowerShell", env!("CARGO_PKG_VERSION"));
+        println!(
+            "tuif {} — Vim-like TUI File Manager for PowerShell",
+            env!("CARGO_PKG_VERSION")
+        );
         println!();
         println!("Usage: tuif [OPTIONS] [START_DIR]");
         println!();

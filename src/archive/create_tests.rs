@@ -38,7 +38,11 @@ fn ctx() -> Ctx {
     let src = tmp.path().join("src");
     fs::create_dir_all(&work).unwrap();
     fs::create_dir_all(&src).unwrap();
-    Ctx { _tmp: tmp, work, src }
+    Ctx {
+        _tmp: tmp,
+        work,
+        src,
+    }
 }
 
 fn create(c: &Ctx, items: &[PathBuf], out: &str) -> Result<CreateResult, ArchiveError> {
@@ -50,7 +54,10 @@ fn created(c: &Ctx, items: &[PathBuf], out: &str) -> CreateResult {
 }
 
 fn names_of(zip: &Path) -> BTreeSet<String> {
-    parse_central_directory(&read_bytes(zip)).iter().map(|e| e.name_str()).collect()
+    parse_central_directory(&read_bytes(zip))
+        .iter()
+        .map(|e| e.name_str())
+        .collect()
 }
 
 fn set(items: &[&str]) -> BTreeSet<String> {
@@ -59,7 +66,9 @@ fn set(items: &[&str]) -> BTreeSet<String> {
 
 fn read_entry(zip: &Path, name: &str) -> Vec<u8> {
     let mut archive = zip::ZipArchive::new(fs::File::open(zip).unwrap()).expect("valid zip");
-    let mut f = archive.by_name(name).unwrap_or_else(|e| panic!("entry {name}: {e}"));
+    let mut f = archive
+        .by_name(name)
+        .unwrap_or_else(|e| panic!("entry {name}: {e}"));
     let mut out = Vec::new();
     f.read_to_end(&mut out).unwrap();
     out
@@ -70,7 +79,10 @@ fn code(r: Result<CreateResult, ArchiveError>) -> Code {
 }
 
 fn no_output_and_no_temp(dir: &Path) {
-    let zips: Vec<String> = tree_names(dir).into_iter().filter(|n| n.to_lowercase().ends_with(".zip")).collect();
+    let zips: Vec<String> = tree_names(dir)
+        .into_iter()
+        .filter(|n| n.to_lowercase().ends_with(".zip"))
+        .collect();
     assert!(zips.is_empty(), "no ZIP may be left: {zips:?}");
     assert_no_temp_leftovers(dir);
 }
@@ -83,10 +95,24 @@ fn ac309_zip_is_appended_unless_the_name_already_ends_with_it() {
     let base = tempdir();
     let b = base.path();
     assert_eq!(resolve_output_path("out", b).unwrap(), b.join("out.zip"));
-    assert_eq!(resolve_output_path("out.zip", b).unwrap(), b.join("out.zip"));
-    assert_eq!(resolve_output_path("out.ZIP", b).unwrap(), b.join("out.ZIP"), "no `.zip` on top of `.ZIP`");
-    assert_eq!(resolve_output_path("a.txt", b).unwrap(), b.join("a.txt.zip"), "R-321: extensions are not replaced");
-    assert_eq!(resolve_output_path("out.zip.bak", b).unwrap(), b.join("out.zip.bak.zip"));
+    assert_eq!(
+        resolve_output_path("out.zip", b).unwrap(),
+        b.join("out.zip")
+    );
+    assert_eq!(
+        resolve_output_path("out.ZIP", b).unwrap(),
+        b.join("out.ZIP"),
+        "no `.zip` on top of `.ZIP`"
+    );
+    assert_eq!(
+        resolve_output_path("a.txt", b).unwrap(),
+        b.join("a.txt.zip"),
+        "R-321: extensions are not replaced"
+    );
+    assert_eq!(
+        resolve_output_path("out.zip.bak", b).unwrap(),
+        b.join("out.zip.bak.zip")
+    );
 }
 
 // R-322-1 / AC-310-1: relative input is resolved against `base_dir`, never the process CWD.
@@ -94,10 +120,19 @@ fn ac309_zip_is_appended_unless_the_name_already_ends_with_it() {
 fn ac310_1_relative_paths_are_resolved_against_base_dir() {
     let base = tempdir();
     let b = base.path();
-    assert_eq!(resolve_output_path("out.zip", b).unwrap(), b.join("out.zip"));
-    assert_eq!(resolve_output_path(r"sub\x", b).unwrap(), b.join("sub").join("x.zip"));
+    assert_eq!(
+        resolve_output_path("out.zip", b).unwrap(),
+        b.join("out.zip")
+    );
+    assert_eq!(
+        resolve_output_path(r"sub\x", b).unwrap(),
+        b.join("sub").join("x.zip")
+    );
     let absolute = b.join("elsewhere").join("y");
-    assert_eq!(resolve_output_path(&absolute.to_string_lossy(), b).unwrap(), b.join("elsewhere").join("y.zip"));
+    assert_eq!(
+        resolve_output_path(&absolute.to_string_lossy(), b).unwrap(),
+        b.join("elsewhere").join("y.zip")
+    );
 }
 
 #[cfg(windows)]
@@ -105,13 +140,22 @@ fn ac310_1_relative_paths_are_resolved_against_base_dir() {
 fn ac310_1_drive_relative_and_root_relative_paths_are_invalid_path() {
     let base = tempdir();
     for bad in ["C:x.zip", r"\x.zip", "C:out"] {
-        assert_eq!(resolve_output_path(bad, base.path()).unwrap_err().code, Code::InvalidPath, "{bad}");
+        assert_eq!(
+            resolve_output_path(bad, base.path()).unwrap_err().code,
+            Code::InvalidPath,
+            "{bad}"
+        );
     }
 }
 
 #[test]
 fn a_base_dir_that_is_not_absolute_is_invalid_path() {
-    assert_eq!(resolve_output_path("out.zip", Path::new("relative/base")).unwrap_err().code, Code::InvalidPath);
+    assert_eq!(
+        resolve_output_path("out.zip", Path::new("relative/base"))
+            .unwrap_err()
+            .code,
+        Code::InvalidPath
+    );
 }
 
 // R-322 / R-324 / AC-310.
@@ -119,7 +163,11 @@ fn a_base_dir_that_is_not_absolute_is_invalid_path() {
 fn ac310_blank_and_forbidden_names_are_invalid_name() {
     let base = tempdir();
     for bad in ["", "   ", "a?.zip", "a*b", "sub\\a?", "x<y", "out\\"] {
-        assert_eq!(resolve_output_path(bad, base.path()).unwrap_err().code, Code::InvalidName, "{bad:?}");
+        assert_eq!(
+            resolve_output_path(bad, base.path()).unwrap_err().code,
+            Code::InvalidName,
+            "{bad:?}"
+        );
     }
 }
 
@@ -129,9 +177,17 @@ fn ac310_blank_and_forbidden_names_are_invalid_name() {
 #[test]
 fn r325_no_items_and_missing_items() {
     let c = ctx();
-    assert_eq!(check_create(&[], "out.zip", &c.work).unwrap_err().code, Code::NoItems);
+    assert_eq!(
+        check_create(&[], "out.zip", &c.work).unwrap_err().code,
+        Code::NoItems
+    );
     let missing = c.src.join("missing.txt");
-    assert_eq!(check_create(&[missing], "out.zip", &c.work).unwrap_err().code, Code::NotFound);
+    assert_eq!(
+        check_create(&[missing], "out.zip", &c.work)
+            .unwrap_err()
+            .code,
+        Code::NotFound
+    );
 }
 
 #[cfg(windows)]
@@ -143,8 +199,16 @@ fn ac321_3_a_drive_root_item_has_no_archive_name_and_is_invalid_path() {
         skip("no C: drive");
         return;
     }
-    assert_eq!(check_create(&[root.clone()], "out.zip", &c.work).unwrap_err().code, Code::InvalidPath);
-    assert_eq!(create(&c, &[root], "out.zip").unwrap_err().code, Code::InvalidPath);
+    assert_eq!(
+        check_create(&[root.clone()], "out.zip", &c.work)
+            .unwrap_err()
+            .code,
+        Code::InvalidPath
+    );
+    assert_eq!(
+        create(&c, &[root], "out.zip").unwrap_err().code,
+        Code::InvalidPath
+    );
     no_output_and_no_temp(&c.work);
 }
 
@@ -154,8 +218,16 @@ fn ac321_3_an_existing_directory_at_the_output_path_is_already_exists() {
     let c = ctx();
     let item = write_file(&c.src, "a.txt", b"a");
     fs::create_dir(c.work.join("out.zip")).unwrap();
-    assert_eq!(check_create(&[item.clone()], "out.zip", &c.work).unwrap_err().code, Code::AlreadyExists);
-    assert_eq!(create(&c, &[item], "out.zip").unwrap_err().code, Code::AlreadyExists);
+    assert_eq!(
+        check_create(&[item.clone()], "out.zip", &c.work)
+            .unwrap_err()
+            .code,
+        Code::AlreadyExists
+    );
+    assert_eq!(
+        create(&c, &[item], "out.zip").unwrap_err().code,
+        Code::AlreadyExists
+    );
 }
 
 // R-324-1: a missing parent directory is refused (never auto-created).
@@ -164,9 +236,22 @@ fn r324_1_a_missing_parent_directory_is_destination_not_found() {
     let c = ctx();
     let item = write_file(&c.src, "a.txt", b"a");
     let out = c.work.join("no").join("such").join("out.zip");
-    assert_eq!(check_create(&[item.clone()], &out.to_string_lossy(), &c.work).unwrap_err().code, Code::DestinationNotFound);
-    assert_eq!(create(&c, &[item], &out.to_string_lossy()).unwrap_err().code, Code::DestinationNotFound);
-    assert!(!c.work.join("no").exists(), "no directory may be auto-created");
+    assert_eq!(
+        check_create(&[item.clone()], &out.to_string_lossy(), &c.work)
+            .unwrap_err()
+            .code,
+        Code::DestinationNotFound
+    );
+    assert_eq!(
+        create(&c, &[item], &out.to_string_lossy())
+            .unwrap_err()
+            .code,
+        Code::DestinationNotFound
+    );
+    assert!(
+        !c.work.join("no").exists(),
+        "no directory may be auto-created"
+    );
 }
 
 // AC-321-2: output inside a source directory.
@@ -176,8 +261,18 @@ fn ac321_2_an_output_path_inside_a_source_directory_is_destination_inside_source
     let docs = c.src.join("docs");
     write_file(&docs, "x.txt", b"x");
     let out = docs.join("out.zip");
-    assert_eq!(check_create(&[docs.clone()], &out.to_string_lossy(), &c.work).unwrap_err().code, Code::DestinationInsideSource);
-    assert_eq!(create(&c, &[docs.clone()], &out.to_string_lossy()).unwrap_err().code, Code::DestinationInsideSource);
+    assert_eq!(
+        check_create(&[docs.clone()], &out.to_string_lossy(), &c.work)
+            .unwrap_err()
+            .code,
+        Code::DestinationInsideSource
+    );
+    assert_eq!(
+        create(&c, &[docs.clone()], &out.to_string_lossy())
+            .unwrap_err()
+            .code,
+        Code::DestinationInsideSource
+    );
     assert!(!out.exists());
     assert_no_temp_leftovers(&docs);
 }
@@ -186,10 +281,24 @@ fn ac321_2_an_output_path_inside_a_source_directory_is_destination_inside_source
 #[test]
 fn r325_an_output_path_identical_to_a_source_file_is_destination_inside_source() {
     let c = ctx();
-    let precious = write_file(&c.src, "keep.zip", b"i am a source file that happens to be named like the output");
-    let err = create_zip(&[precious.clone()], &precious.to_string_lossy(), &c.work, true, &CreateHooks::none()).unwrap_err();
+    let precious = write_file(
+        &c.src,
+        "keep.zip",
+        b"i am a source file that happens to be named like the output",
+    );
+    let err = create_zip(
+        &[precious.clone()],
+        &precious.to_string_lossy(),
+        &c.work,
+        true,
+        &CreateHooks::none(),
+    )
+    .unwrap_err();
     assert_eq!(err.code, Code::DestinationInsideSource);
-    assert_eq!(read_string(&precious), "i am a source file that happens to be named like the output");
+    assert_eq!(
+        read_string(&precious),
+        "i am a source file that happens to be named like the output"
+    );
 }
 
 // A sibling whose NAME merely starts like the source is not inside it.
@@ -217,7 +326,12 @@ fn ac321_4_a_letter_case_alias_of_a_source_directory_is_still_inside_it() {
     let docs = c.src.join("Docs");
     write_file(&docs, "x.txt", b"x");
     let out = c.src.join("DOCS").join("x.zip");
-    assert_eq!(check_create(&[docs.clone()], &out.to_string_lossy(), &c.work).unwrap_err().code, Code::DestinationInsideSource);
+    assert_eq!(
+        check_create(&[docs.clone()], &out.to_string_lossy(), &c.work)
+            .unwrap_err()
+            .code,
+        Code::DestinationInsideSource
+    );
     assert!(!docs.join("x.zip").exists());
 }
 
@@ -233,8 +347,18 @@ fn ac321_4_a_junction_alias_into_a_source_directory_is_still_inside_it() {
         return;
     }
     let out = link.join("x.zip");
-    assert_eq!(check_create(&[docs.clone()], &out.to_string_lossy(), &c.work).unwrap_err().code, Code::DestinationInsideSource);
-    assert_eq!(create(&c, &[docs.clone()], &out.to_string_lossy()).unwrap_err().code, Code::DestinationInsideSource);
+    assert_eq!(
+        check_create(&[docs.clone()], &out.to_string_lossy(), &c.work)
+            .unwrap_err()
+            .code,
+        Code::DestinationInsideSource
+    );
+    assert_eq!(
+        create(&c, &[docs.clone()], &out.to_string_lossy())
+            .unwrap_err()
+            .code,
+        Code::DestinationInsideSource
+    );
     assert!(!docs.join("x.zip").exists());
     remove_dir_link(&link);
 }
@@ -253,15 +377,39 @@ fn ac321_5_an_output_path_that_is_a_link_is_invalid_path() {
         skip("cannot create a junction/symlink here");
         return;
     }
-    assert_eq!(check_create(&[item.clone()], "out.zip", &c.work).unwrap_err().code, Code::InvalidPath);
-    let err = create_zip(&[item.clone()], "out.zip", &c.work, true, &CreateHooks::none()).unwrap_err();
-    assert_eq!(err.code, Code::InvalidPath, "even with overwrite=true a link is never a valid target");
-    assert!(tree_names(&real_dir).is_empty(), "nothing may be written through the link");
+    assert_eq!(
+        check_create(&[item.clone()], "out.zip", &c.work)
+            .unwrap_err()
+            .code,
+        Code::InvalidPath
+    );
+    let err = create_zip(
+        &[item.clone()],
+        "out.zip",
+        &c.work,
+        true,
+        &CreateHooks::none(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.code,
+        Code::InvalidPath,
+        "even with overwrite=true a link is never a valid target"
+    );
+    assert!(
+        tree_names(&real_dir).is_empty(),
+        "nothing may be written through the link"
+    );
     remove_dir_link(&link);
 
     // dangling junction
     assert!(make_dangling_dir_link(&link, &c.work.join("scratch")));
-    assert_eq!(check_create(&[item.clone()], "out.zip", &c.work).unwrap_err().code, Code::InvalidPath);
+    assert_eq!(
+        check_create(&[item.clone()], "out.zip", &c.work)
+            .unwrap_err()
+            .code,
+        Code::InvalidPath
+    );
     assert!(!c.work.join("scratch").exists());
     remove_dir_link(&link);
 }
@@ -290,15 +438,34 @@ fn ac364_3_a_source_name_with_an_unpaired_surrogate_is_invalid_path() {
     let c = ctx();
     let dir = c.src.join("holder");
     fs::create_dir(&dir).unwrap();
-    let bad_name = OsString::from_wide(&[b'b' as u16, b'a' as u16, b'd' as u16, 0xD800, b'.' as u16, b't' as u16]);
+    let bad_name = OsString::from_wide(&[
+        b'b' as u16,
+        b'a' as u16,
+        b'd' as u16,
+        0xD800,
+        b'.' as u16,
+        b't' as u16,
+    ]);
     let bad = dir.join(&bad_name);
     if fs::write(&bad, b"x").is_err() {
         skip("the filesystem refused a name with an unpaired surrogate");
         return;
     }
     let out = c.work.join("out.zip");
-    assert_eq!(create(&c, &[bad.clone()], &out.to_string_lossy()).unwrap_err().code, Code::InvalidPath, "as a top-level item");
-    assert_eq!(create(&c, &[dir.clone()], &out.to_string_lossy()).unwrap_err().code, Code::InvalidPath, "inside a directory");
+    assert_eq!(
+        create(&c, &[bad.clone()], &out.to_string_lossy())
+            .unwrap_err()
+            .code,
+        Code::InvalidPath,
+        "as a top-level item"
+    );
+    assert_eq!(
+        create(&c, &[dir.clone()], &out.to_string_lossy())
+            .unwrap_err()
+            .code,
+        Code::InvalidPath,
+        "inside a directory"
+    );
     no_output_and_no_temp(&c.work);
 }
 
@@ -310,9 +477,18 @@ fn check_create_never_touches_the_filesystem() {
     write_file(&c.work, "exists.zip", b"old zip");
     let before = (tree(&c.work), tree(&c.src));
     let ok = check_create(&[item.clone()], "fresh", &c.work).unwrap();
-    assert_eq!(ok, CheckedCreate { output_path: c.work.join("fresh.zip"), overwrite_required: false });
+    assert_eq!(
+        ok,
+        CheckedCreate {
+            output_path: c.work.join("fresh.zip"),
+            overwrite_required: false
+        }
+    );
     let existing = check_create(&[item.clone()], "exists.zip", &c.work).unwrap();
-    assert!(existing.overwrite_required, "an existing FILE needs the overwrite confirmation (R-326)");
+    assert!(
+        existing.overwrite_required,
+        "an existing FILE needs the overwrite confirmation (R-326)"
+    );
     assert_eq!(existing.output_path, c.work.join("exists.zip"));
     let _ = check_create(&[item], "no\\parent\\x.zip", &c.work);
     assert_eq!((tree(&c.work), tree(&c.src)), before);
@@ -333,7 +509,10 @@ fn r327_1_items_are_stored_under_their_own_names() {
     assert_eq!(r.entries, 4, "a.txt, b.txt, docs/, docs/d.txt");
     assert_eq!(r.skipped_links, 0);
     let zip = c.work.join("out.zip");
-    assert_eq!(names_of(&zip), set(&["a.txt", "b.txt", "docs/", "docs/d.txt"]));
+    assert_eq!(
+        names_of(&zip),
+        set(&["a.txt", "b.txt", "docs/", "docs/d.txt"])
+    );
     assert_eq!(read_entry(&zip, "a.txt"), b"alpha");
     assert_eq!(read_entry(&zip, "docs/d.txt"), b"delta");
     assert_no_temp_leftovers(&c.work);
@@ -351,12 +530,26 @@ fn ac318_a_folder_round_trips_through_create_and_extract() {
     created(&c, &[docs.clone()], "docs");
     let zip = c.work.join("docs.zip");
     let names = names_of(&zip);
-    assert_eq!(names, set(&["docs/", "docs/top.txt", "docs/sub/", "docs/sub/deep/", "docs/sub/deep/x.txt", "docs/empty/"]));
+    assert_eq!(
+        names,
+        set(&[
+            "docs/",
+            "docs/top.txt",
+            "docs/sub/",
+            "docs/sub/deep/",
+            "docs/sub/deep/x.txt",
+            "docs/empty/"
+        ])
+    );
     assert!(names.iter().all(|n| !n.contains('\\')), "R-327-3: `/` only");
     let out = c.work.join("restored");
     let r: ExtractResult = extract_simple(&zip, &out, &c.work).expect("extract");
     assert_eq!(r.outcome, ExtractOutcome::Completed, "{:?}", r.error);
-    assert_eq!(tree(&out), tree(&c.src), "the restored tree equals the source tree");
+    assert_eq!(
+        tree(&out),
+        tree(&c.src),
+        "the restored tree equals the source tree"
+    );
     assert!(out.join("docs/empty").is_dir());
 }
 
@@ -371,7 +564,12 @@ fn ac319_files_are_deflated_directories_stored_and_nothing_is_encrypted() {
     let cd = parse_central_directory(&read_bytes(&c.work.join("out.zip")));
     assert!(cd.len() >= 3);
     for e in &cd {
-        assert_eq!(e.flags & FLAG_ENCRYPTED, 0, "{} must not be encrypted", e.name_str());
+        assert_eq!(
+            e.flags & FLAG_ENCRYPTED,
+            0,
+            "{} must not be encrypted",
+            e.name_str()
+        );
         if e.name.ends_with(b"/") {
             assert_eq!(e.method, METHOD_STORED, "{}", e.name_str());
         } else {
@@ -391,10 +589,21 @@ fn ac320_japanese_names_are_utf8_with_the_bit_11_flag() {
     let cd = parse_central_directory(&read_bytes(&c.work.join("out.zip")));
     let expect = ["日本語のファイル.txt", "資料/", "資料/メモ.txt"];
     for name in expect {
-        let e = cd.iter().find(|e| e.name == name.as_bytes()).unwrap_or_else(|| panic!("{name} missing: {:?}", cd.iter().map(|e| e.name_str()).collect::<Vec<_>>()));
+        let e = cd
+            .iter()
+            .find(|e| e.name == name.as_bytes())
+            .unwrap_or_else(|| {
+                panic!(
+                    "{name} missing: {:?}",
+                    cd.iter().map(|e| e.name_str()).collect::<Vec<_>>()
+                )
+            });
         assert_eq!(e.flags & FLAG_UTF8, FLAG_UTF8, "{name}: bit 11 must be set");
     }
-    assert_eq!(read_entry(&c.work.join("out.zip"), "日本語のファイル.txt"), "こんにちは".as_bytes());
+    assert_eq!(
+        read_entry(&c.work.join("out.zip"), "日本語のファイル.txt"),
+        "こんにちは".as_bytes()
+    );
 }
 
 // AC-321 / R-327-7: hidden files are included regardless of any UI setting.
@@ -407,13 +616,20 @@ fn ac321_hidden_files_are_included() {
     #[cfg(windows)]
     {
         for p in [&dotfile, &hidden] {
-            let status = std::process::Command::new("attrib").arg("+h").arg(p).status().expect("attrib");
+            let status = std::process::Command::new("attrib")
+                .arg("+h")
+                .arg(p)
+                .status()
+                .expect("attrib");
             assert!(status.success());
         }
     }
     let _ = (&dotfile, &hidden);
     created(&c, &[folder], "out");
-    assert_eq!(names_of(&c.work.join("out.zip")), set(&["proj/", "proj/.env", "proj/hidden.txt"]));
+    assert_eq!(
+        names_of(&c.work.join("out.zip")),
+        set(&["proj/", "proj/.env", "proj/hidden.txt"])
+    );
 }
 
 // AC-321-1 / R-327-8: links are skipped and counted; a loop cannot hang the run.
@@ -430,7 +646,11 @@ fn ac321_1_junctions_are_skipped_counted_and_a_cycle_terminates() {
     }
     let r = created(&c, &[src.clone()], "out");
     let names = names_of(&c.work.join("out.zip"));
-    assert_eq!(names, set(&["proj/", "proj/real/", "proj/real/x.txt"]), "links and everything behind them are left out");
+    assert_eq!(
+        names,
+        set(&["proj/", "proj/real/", "proj/real/x.txt"]),
+        "links and everything behind them are left out"
+    );
     assert_eq!(r.skipped_links, 2);
     assert_eq!(r.entries, 3);
     remove_dir_link(&src.join("to-other"));
@@ -474,7 +694,9 @@ fn r327_11_out_of_range_times_are_clamped_not_failed() {
     let c = ctx();
     let old = write_file(&c.src, "old.txt", b"o");
     let future = write_file(&c.src, "future.txt", b"f");
-    if set_mtime(&old, unix_time(0)).is_err() || set_mtime(&future, unix_time(7_258_118_400)).is_err() {
+    if set_mtime(&old, unix_time(0)).is_err()
+        || set_mtime(&future, unix_time(7_258_118_400)).is_err()
+    {
         skip("the filesystem refused the extreme timestamps");
         return;
     }
@@ -482,10 +704,17 @@ fn r327_11_out_of_range_times_are_clamped_not_failed() {
     let cd = parse_central_directory(&read_bytes(&c.work.join("out.zip")));
     for e in &cd {
         let year = 1980 + (e.dos_date >> 9);
-        assert!((1980..=2107).contains(&year), "{}: year {year}", e.name_str());
+        assert!(
+            (1980..=2107).contains(&year),
+            "{}: year {year}",
+            e.name_str()
+        );
     }
     let old_entry = cd.iter().find(|e| e.name == b"old.txt").unwrap();
-    assert!(1980 + (old_entry.dos_date >> 9) <= 1980, "1970 is rounded up to the 1980 epoch");
+    assert!(
+        1980 + (old_entry.dos_date >> 9) <= 1980,
+        "1970 is rounded up to the 1980 epoch"
+    );
 }
 
 // AC-319-1: create -> extract restores file AND directory times (2 s tolerance) and
@@ -508,9 +737,21 @@ fn ac319_1_modification_times_survive_a_round_trip_and_readonly_is_not_applied()
     let r = extract_simple(&c.work.join("out.zip"), &out, &c.work).expect("extract");
     assert_eq!(r.outcome, ExtractOutcome::Completed, "{:?}", r.error);
     let restored_file = out.join("proj/sub/f.txt");
-    assert!(secs_apart(mtime(&restored_file), when_file) <= 2, "file time restored");
-    assert!(secs_apart(mtime(&out.join("proj/sub")), when_dir) <= 2, "directory time restored (set after its children)");
-    assert!(!fs::metadata(&restored_file).unwrap().permissions().readonly(), "R-346-3");
+    assert!(
+        secs_apart(mtime(&restored_file), when_file) <= 2,
+        "file time restored"
+    );
+    assert!(
+        secs_apart(mtime(&out.join("proj/sub")), when_dir) <= 2,
+        "directory time restored (set after its children)"
+    );
+    assert!(
+        !fs::metadata(&restored_file)
+            .unwrap()
+            .permissions()
+            .readonly(),
+        "R-346-3"
+    );
     // so that the temp dir can be removed
     let mut p = fs::metadata(&file).unwrap().permissions();
     p.set_readonly(false);
@@ -534,9 +775,17 @@ fn r327_9_large_file_option_starts_at_u32_max() {
 fn ac311_check_create_flags_an_existing_file_for_confirmation() {
     let c = ctx();
     let item = write_file(&c.src, "a.txt", b"a");
-    assert!(!check_create(&[item.clone()], "fresh.zip", &c.work).unwrap().overwrite_required);
+    assert!(
+        !check_create(&[item.clone()], "fresh.zip", &c.work)
+            .unwrap()
+            .overwrite_required
+    );
     write_file(&c.work, "taken.zip", b"old");
-    assert!(check_create(&[item], "taken.zip", &c.work).unwrap().overwrite_required);
+    assert!(
+        check_create(&[item], "taken.zip", &c.work)
+            .unwrap()
+            .overwrite_required
+    );
 }
 
 // AC-314 / R-326-3: no instruction to overwrite -> `conflict`, nothing touched.
@@ -571,10 +820,16 @@ fn must66_an_output_that_appears_before_the_commit_is_never_replaced() {
     let intruder = |final_path: &Path| {
         fs::write(final_path, "created by someone else").expect("racing file");
     };
-    let hooks = CreateHooks { before_commit: &intruder, ..CreateHooks::none() };
+    let hooks = CreateHooks {
+        before_commit: &intruder,
+        ..CreateHooks::none()
+    };
     let err = create_zip(&[item], "out.zip", &c.work, false, &hooks).unwrap_err();
     assert_eq!(err.code, Code::Conflict);
-    assert_eq!(read_string(&c.work.join("out.zip")), "created by someone else");
+    assert_eq!(
+        read_string(&c.work.join("out.zip")),
+        "created by someone else"
+    );
     assert_no_temp_leftovers(&c.work);
 }
 
@@ -588,9 +843,18 @@ fn ac315_an_unreadable_source_leaves_no_output_and_no_temp_file() {
     write_file(&folder, "a.txt", b"a");
     let locked = write_file(&folder, "locked.txt", b"locked");
     write_file(&folder, "z.txt", b"z");
-    let _exclusive = fs::OpenOptions::new().read(true).write(true).share_mode(0).open(&locked).expect("lock");
+    let _exclusive = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .share_mode(0)
+        .open(&locked)
+        .expect("lock");
     let err = create(&c, &[folder], "out.zip").unwrap_err();
-    assert!(matches!(err.code, Code::IoError | Code::PermissionDenied), "{:?}", err.code);
+    assert!(
+        matches!(err.code, Code::IoError | Code::PermissionDenied),
+        "{:?}",
+        err.code
+    );
     no_output_and_no_temp(&c.work);
 }
 
@@ -610,7 +874,11 @@ fn ac316_a_canceled_overwrite_keeps_the_existing_file_and_leaves_no_temp() {
         }
     };
     let poll = || flag.load(Ordering::Relaxed);
-    let hooks = CreateHooks { should_cancel: &poll, on_progress: &raise, ..CreateHooks::none() };
+    let hooks = CreateHooks {
+        should_cancel: &poll,
+        on_progress: &raise,
+        ..CreateHooks::none()
+    };
     let err = create_zip(&[folder], "out.zip", &c.work, true, &hooks).unwrap_err();
     assert_eq!(err.code, Code::Canceled);
     assert_eq!(read_string(&existing), "the original archive bytes");
@@ -632,7 +900,11 @@ fn ac353_a_canceled_creation_leaves_nothing_behind() {
         }
     };
     let poll = || flag.load(Ordering::Relaxed);
-    let hooks = CreateHooks { should_cancel: &poll, on_progress: &raise, ..CreateHooks::none() };
+    let hooks = CreateHooks {
+        should_cancel: &poll,
+        on_progress: &raise,
+        ..CreateHooks::none()
+    };
     let err = create_zip(&[folder], "out.zip", &c.work, false, &hooks).unwrap_err();
     assert_eq!(err.code, Code::Canceled);
     no_output_and_no_temp(&c.work);
@@ -643,7 +915,10 @@ fn ac353_a_canceled_creation_leaves_nothing_behind() {
 fn ac358_2_a_cancel_requested_up_front_creates_nothing() {
     let c = ctx();
     let item = write_file(&c.src, "a.txt", b"a");
-    let hooks = CreateHooks { should_cancel: &|| true, ..CreateHooks::none() };
+    let hooks = CreateHooks {
+        should_cancel: &|| true,
+        ..CreateHooks::none()
+    };
     let err = create_zip(&[item], "out.zip", &c.work, false, &hooks).unwrap_err();
     assert_eq!(err.code, Code::Canceled);
     assert!(tree_names(&c.work).is_empty(), "{:?}", tree_names(&c.work));
@@ -661,12 +936,24 @@ fn ac317_the_output_is_written_to_a_temp_file_until_the_end() {
     let events: RefCell<Vec<(String, usize, usize)>> = RefCell::new(Vec::new());
     let temps_seen: RefCell<Vec<usize>> = RefCell::new(Vec::new());
     let observe = |ev: &ProgressEvent| {
-        assert!(!out.exists(), "the final name must not exist while writing (entry {})", ev.index);
-        let temps = tree_names(&c.work).into_iter().filter(|n| n.starts_with(".rfz-") && n.ends_with(".tmp")).count();
+        assert!(
+            !out.exists(),
+            "the final name must not exist while writing (entry {})",
+            ev.index
+        );
+        let temps = tree_names(&c.work)
+            .into_iter()
+            .filter(|n| n.starts_with(".rfz-") && n.ends_with(".tmp"))
+            .count();
         temps_seen.borrow_mut().push(temps);
-        events.borrow_mut().push((ev.name.to_string(), ev.index, ev.total));
+        events
+            .borrow_mut()
+            .push((ev.name.to_string(), ev.index, ev.total));
     };
-    let hooks = CreateHooks { on_progress: &observe, ..CreateHooks::none() };
+    let hooks = CreateHooks {
+        on_progress: &observe,
+        ..CreateHooks::none()
+    };
     let r = create_zip(&[folder], "out.zip", &c.work, false, &hooks).expect("create");
     assert!(out.exists());
     assert_no_temp_leftovers(&c.work);
@@ -676,8 +963,15 @@ fn ac317_the_output_is_written_to_a_temp_file_until_the_end() {
     for (i, (_, index, total)) in events.iter().enumerate() {
         assert_eq!((*index, *total), (i + 1, 3));
     }
-    assert!(events.iter().all(|(n, _, _)| n.starts_with("proj")), "{events:?}");
-    assert!(temps_seen.borrow().iter().all(|&n| n == 1), "exactly one temp file during the run: {:?}", temps_seen.borrow());
+    assert!(
+        events.iter().all(|(n, _, _)| n.starts_with("proj")),
+        "{events:?}"
+    );
+    assert!(
+        temps_seen.borrow().iter().all(|&n| n == 1),
+        "exactly one temp file during the run: {:?}",
+        temps_seen.borrow()
+    );
 }
 
 // R-328-3: leftovers from a crashed earlier run are NOT cleaned up.

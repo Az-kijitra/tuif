@@ -38,7 +38,11 @@ fn create_in_makes_an_empty_temp_file_with_the_fixed_shape() {
     let t = TempFile::create_in(tmp.path()).expect("create");
     let name = t.path().file_name().unwrap().to_string_lossy().into_owned();
     assert!(is_temp_shaped(&name), "{name}");
-    assert_eq!(t.path().parent().unwrap(), tmp.path(), "created in the requested directory");
+    assert_eq!(
+        t.path().parent().unwrap(),
+        tmp.path(),
+        "created in the requested directory"
+    );
     assert_eq!(std::fs::metadata(t.path()).unwrap().len(), 0);
 }
 
@@ -65,7 +69,10 @@ fn drop_deletes_the_temp_file() {
         t.file().write_all(b"partial data").unwrap();
         t.path().to_path_buf()
     };
-    assert!(!path.exists(), "the guard must delete the temp file on drop");
+    assert!(
+        !path.exists(),
+        "the guard must delete the temp file on drop"
+    );
     assert!(tree_names(tmp.path()).is_empty());
 }
 
@@ -79,7 +86,10 @@ fn drop_deletes_the_temp_file_even_when_the_operation_panics() {
         panic!("simulated failure while writing");
     });
     assert!(result.is_err());
-    assert!(tree_names(tmp.path()).is_empty(), "no temp file may survive a panic");
+    assert!(
+        tree_names(tmp.path()).is_empty(),
+        "no temp file may survive a panic"
+    );
 }
 
 // `into_path` disarms the guard: the caller renames the file to its final name.
@@ -91,7 +101,10 @@ fn into_path_keeps_the_file_and_its_content() {
     let path: PathBuf = t.into_path();
     assert!(path.exists());
     let mut content = String::new();
-    std::fs::File::open(&path).unwrap().read_to_string(&mut content).unwrap();
+    std::fs::File::open(&path)
+        .unwrap()
+        .read_to_string(&mut content)
+        .unwrap();
     assert_eq!(content, "finished");
     // The kept file can be renamed to a final name (Windows: handle is closed).
     let final_path = tmp.path().join("final.bin");
@@ -109,7 +122,10 @@ fn create_new_retries_with_the_next_name_and_never_touches_an_existing_file() {
     let mut calls = 0;
     let mut generator = || {
         calls += 1;
-        names.next().expect("more attempts than expected").to_string()
+        names
+            .next()
+            .expect("more attempts than expected")
+            .to_string()
     };
     let t = TempFile::create_in_with(tmp.path(), &mut generator).expect("third attempt succeeds");
     assert_eq!(t.path().file_name().unwrap(), ".fresh.tmp");
@@ -149,7 +165,10 @@ fn should87_create_new_does_not_write_through_a_dangling_directory_link() {
     let mut names = vec![".rfz-link.tmp".to_string(), ".rfz-ok.tmp".to_string()].into_iter();
     let mut generator = || names.next().unwrap_or_else(|| ".rfz-last.tmp".to_string());
     let outcome = TempFile::create_in_with(tmp.path(), &mut generator);
-    assert!(!target.exists(), "the link target must not have been created through the link");
+    assert!(
+        !target.exists(),
+        "the link target must not have been created through the link"
+    );
     drop(outcome);
     remove_dir_link(&link);
 }
@@ -166,6 +185,9 @@ fn should87_create_new_does_not_write_through_a_dangling_file_symlink() {
     let mut names = vec![".rfz-link.tmp".to_string(), ".rfz-ok.tmp".to_string()].into_iter();
     let mut generator = || names.next().unwrap_or_else(|| ".rfz-last.tmp".to_string());
     let outcome = TempFile::create_in_with(tmp.path(), &mut generator);
-    assert!(!target.exists(), "create_new must refuse a dangling symlink instead of creating its target");
+    assert!(
+        !target.exists(),
+        "create_new must refuse a dangling symlink instead of creating its target"
+    );
     drop(outcome);
 }

@@ -69,7 +69,11 @@ pub fn default_external_apps() -> Vec<ExternalAppEntry> {
         ExternalAppEntry {
             name: "Open PowerShell".to_string(),
             program: "pwsh.exe".to_string(),
-            args: vec!["-NoLogo".to_string(), "-WorkingDirectory".to_string(), "{dir}".to_string()],
+            args: vec![
+                "-NoLogo".to_string(),
+                "-WorkingDirectory".to_string(),
+                "{dir}".to_string(),
+            ],
             args_for_file: None,
             key: KeyChord::parse_list("Ctrl+Alt+C").ok(),
             key_label: "Ctrl+Alt+C".to_string(),
@@ -251,7 +255,11 @@ pub fn resolve_less_executable() -> Option<PathBuf> {
 }
 
 /// Spawns a GUI process (`Code.exe`, `explorer.exe`) asynchronously without suspending the TUI.
-pub fn spawn_gui_nonblocking(exe: &Path, args: &[String], working_dir: &Path) -> Result<(), String> {
+pub fn spawn_gui_nonblocking(
+    exe: &Path,
+    args: &[String],
+    working_dir: &Path,
+) -> Result<(), String> {
     Command::new(exe)
         .args(args)
         .current_dir(working_dir)
@@ -273,7 +281,8 @@ pub fn open_with_default_app(path: &Path) -> Result<(), String> {
 
     const SE_ERR_NOASSOC: isize = 31;
 
-    let to_wide = |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain(std::iter::once(0)).collect() };
+    let to_wide =
+        |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain(std::iter::once(0)).collect() };
     let file_w = to_wide(path.as_os_str());
     let dir_w = path
         .parent()
@@ -320,7 +329,11 @@ pub fn open_with_default_app(path: &Path) -> Result<(), String> {
 
 #[cfg(not(windows))]
 pub fn open_with_default_app(path: &Path) -> Result<(), String> {
-    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
     Command::new(opener)
         .arg(path)
         .stdin(Stdio::null())
@@ -538,7 +551,10 @@ pub fn run_fuzzy_finder(req: &PendingFuzzySearch) -> Result<Option<FuzzySelectio
                 "--header=Enter: Jump to file in tuif | Esc: Cancel".to_string(),
             ];
             if bat_exe.is_some() {
-                fzf_args.push("--preview=bat --color=always --style=numbers --line-range=:300 -- {}".to_string());
+                fzf_args.push(
+                    "--preview=bat --color=always --style=numbers --line-range=:300 -- {}"
+                        .to_string(),
+                );
                 fzf_args.push("--preview-window=right:55%:border-left".to_string());
             }
 
@@ -660,11 +676,15 @@ pub fn run_fuzzy_finder(req: &PendingFuzzySearch) -> Result<Option<FuzzySelectio
                 "--layout=reverse".to_string(),
                 "--border".to_string(),
                 "--prompt=Live Grep> ".to_string(),
-                "--header=Type keywords to search contents | Enter: Jump to file | Esc: Cancel".to_string(),
+                "--header=Type keywords to search contents | Enter: Jump to file | Esc: Cancel"
+                    .to_string(),
                 "--delimiter=:".to_string(),
             ];
             if bat_exe.is_some() {
-                fzf_args.push("--preview=bat --color=always --style=numbers --highlight-line {2} -- {1}".to_string());
+                fzf_args.push(
+                    "--preview=bat --color=always --style=numbers --highlight-line {2} -- {1}"
+                        .to_string(),
+                );
                 fzf_args.push("--preview-window=right:55%:border-left:+{2}-/2".to_string());
             }
 
@@ -784,7 +804,10 @@ mod tests {
             dir: PathBuf::from(r"C:\work\src"),
             kind: TargetKind::File,
         };
-        assert_eq!(expand_arg("{path}", &target).unwrap(), r"C:\work\src\main.rs");
+        assert_eq!(
+            expand_arg("{path}", &target).unwrap(),
+            r"C:\work\src\main.rs"
+        );
         assert_eq!(expand_arg("{dir}", &target).unwrap(), r"C:\work\src");
         assert_eq!(expand_arg("{{literal}}", &target).unwrap(), "{literal}");
         assert!(expand_arg("{unknown}", &target).is_err());
@@ -793,15 +816,19 @@ mod tests {
     #[test]
     fn clean_relative_path_strips_dot_slashes_and_newlines() {
         assert_eq!(clean_relative_path("  .\\src\\app.rs\r\n"), r"src\app.rs");
-        assert_eq!(clean_relative_path("./docs/user_manual.md\n"), "docs/user_manual.md");
+        assert_eq!(
+            clean_relative_path("./docs/user_manual.md\n"),
+            "docs/user_manual.md"
+        );
         assert_eq!(clean_relative_path("Cargo.toml"), "Cargo.toml");
     }
 
     #[test]
     fn parse_live_grep_selection_extracts_path_and_line_number() {
-        let (path, line) =
-            parse_live_grep_selection(r".\src\app.rs:1601:    pub fn poll_active_transfer(&mut self) {")
-                .unwrap();
+        let (path, line) = parse_live_grep_selection(
+            r".\src\app.rs:1601:    pub fn poll_active_transfer(&mut self) {",
+        )
+        .unwrap();
         assert_eq!(path, r"src\app.rs");
         assert_eq!(line, Some(1601));
 

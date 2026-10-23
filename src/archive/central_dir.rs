@@ -28,7 +28,11 @@ fn corrupt(message: &str) -> ArchiveError {
 }
 
 /// Reads `count` records starting at `start`.
-pub fn scan<R: Read + Seek>(reader: &mut R, start: u64, count: usize) -> Result<Vec<CdRecord>, ArchiveError> {
+pub fn scan<R: Read + Seek>(
+    reader: &mut R,
+    start: u64,
+    count: usize,
+) -> Result<Vec<CdRecord>, ArchiveError> {
     let io = |e: std::io::Error| {
         if e.kind() == std::io::ErrorKind::UnexpectedEof {
             corrupt("the central directory is truncated")
@@ -53,7 +57,11 @@ pub fn scan<R: Read + Seek>(reader: &mut R, start: u64, count: usize) -> Result<
         let mut name_raw = vec![0u8; name_len];
         reader.read_exact(&mut name_raw).map_err(io)?;
         reader.seek_relative(extra_len + comment_len).map_err(io)?;
-        records.push(CdRecord { name_raw, flags, method });
+        records.push(CdRecord {
+            name_raw,
+            flags,
+            method,
+        });
     }
     Ok(records)
 }

@@ -42,7 +42,9 @@ fn builder_output_opens_with_names_kinds_and_data() {
         .build();
     let mut archive = open(bytes);
     assert_eq!(archive.len(), 4);
-    let names: Vec<String> = (0..4).map(|i| archive.by_index_raw(i).unwrap().name().to_string()).collect();
+    let names: Vec<String> = (0..4)
+        .map(|i| archive.by_index_raw(i).unwrap().name().to_string())
+        .collect();
     assert_eq!(names, ["docs/", "docs/a.txt", "docs/b.txt", "日本語.txt"]);
     assert!(archive.by_index_raw(0).unwrap().is_dir());
     let mut s = String::new();
@@ -55,21 +57,38 @@ fn builder_output_opens_with_names_kinds_and_data() {
 
 #[test]
 fn independent_parser_sees_flags_methods_and_names() {
-    let bytes = ZipBuilder::new().file("plain.txt", b"x").file("日本.txt", b"y").entry(Entry::stored("s.txt", b"z")).build();
+    let bytes = ZipBuilder::new()
+        .file("plain.txt", b"x")
+        .file("日本.txt", b"y")
+        .entry(Entry::stored("s.txt", b"z"))
+        .build();
     let cd = parse_central_directory(&bytes);
     assert_eq!(cd.len(), 3);
     assert_eq!(cd[0].name_str(), "plain.txt");
     assert_eq!(cd[0].flags & FLAG_UTF8, 0, "ASCII names carry no bit 11");
-    assert_eq!(cd[1].flags & FLAG_UTF8, FLAG_UTF8, "non-ASCII UTF-8 names carry bit 11");
+    assert_eq!(
+        cd[1].flags & FLAG_UTF8,
+        FLAG_UTF8,
+        "non-ASCII UTF-8 names carry bit 11"
+    );
     assert_eq!(cd[0].method, METHOD_DEFLATE);
     assert_eq!(cd[2].method, METHOD_STORED);
 }
 
 #[test]
 fn forged_sizes_and_crc_are_written_as_given() {
-    let bytes = ZipBuilder::new().entry(Entry::stored("a.txt", b"hello").declare_sizes(3, 3).crc(0xDEAD_BEEF)).build();
+    let bytes = ZipBuilder::new()
+        .entry(
+            Entry::stored("a.txt", b"hello")
+                .declare_sizes(3, 3)
+                .crc(0xDEAD_BEEF),
+        )
+        .build();
     let cd = parse_central_directory(&bytes);
-    assert_eq!((cd[0].uncompressed, cd[0].compressed, cd[0].crc32), (3, 3, 0xDEAD_BEEF));
+    assert_eq!(
+        (cd[0].uncompressed, cd[0].compressed, cd[0].crc32),
+        (3, 3, 0xDEAD_BEEF)
+    );
 }
 
 #[test]
@@ -87,24 +106,39 @@ fn encryption_flag_method_99_and_symlink_attributes_are_visible_to_the_crate() {
     assert!(aes.encrypted());
     drop(aes);
     let link = archive.by_index_raw(3).unwrap();
-    assert!(link.is_symlink(), "unix mode S_IFLNK must be visible as a symlink");
+    assert!(
+        link.is_symlink(),
+        "unix mode S_IFLNK must be visible as a symlink"
+    );
     drop(link);
     let cd = parse_central_directory(&ZipBuilder::new().entry(Entry::aes("a", false)).build());
     assert_eq!(cd[0].method, METHOD_AES);
-    assert_eq!(cd[0].flags & FLAG_ENCRYPTED, 0, "the bit-0-less AES variant really has bit 0 clear");
+    assert_eq!(
+        cd[0].flags & FLAG_ENCRYPTED,
+        0,
+        "the bit-0-less AES variant really has bit 0 clear"
+    );
 }
 
 #[test]
 fn local_name_forgery_keeps_the_central_name() {
-    let bytes = ZipBuilder::new().entry(Entry::file("ok.txt", b"x").local_name(b"../evil.txt")).build();
+    let bytes = ZipBuilder::new()
+        .entry(Entry::file("ok.txt", b"x").local_name(b"../evil.txt"))
+        .build();
     let cd = parse_central_directory(&bytes);
     assert_eq!(cd[0].name_str(), "ok.txt");
-    assert!(bytes.windows(11).any(|w| w == b"../evil.txt"), "the local header carries the forged name");
+    assert!(
+        bytes.windows(11).any(|w| w == b"../evil.txt"),
+        "the local header carries the forged name"
+    );
 }
 
 #[test]
 fn forced_zip64_entry_and_eocd_open_and_read_back() {
-    let bytes = ZipBuilder::new().entry(Entry::file("z64.txt", b"zip64 data").zip64()).force_zip64_eocd().build();
+    let bytes = ZipBuilder::new()
+        .entry(Entry::file("z64.txt", b"zip64 data").zip64())
+        .force_zip64_eocd()
+        .build();
     let mut archive = open(bytes);
     let mut s = String::new();
     archive.by_index(0).unwrap().read_to_string(&mut s).unwrap();
@@ -127,7 +161,14 @@ fn seventy_thousand_entries_produce_a_zip64_archive_the_crate_can_open() {
 fn declared_size_fixture_reports_the_declared_sizes() {
     let eight_gib = 8u64 << 30;
     let compressed = eight_gib / 1032 + 1;
-    let bytes = ZipBuilder::new().entry(Entry::declared("big.bin", METHOD_DEFLATE, eight_gib, compressed)).build();
+    let bytes = ZipBuilder::new()
+        .entry(Entry::declared(
+            "big.bin",
+            METHOD_DEFLATE,
+            eight_gib,
+            compressed,
+        ))
+        .build();
     let mut archive = open(bytes);
     let f = archive.by_index_raw(0).unwrap();
     assert_eq!(f.size(), eight_gib);

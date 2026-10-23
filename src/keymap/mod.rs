@@ -264,7 +264,12 @@ impl KeyChord {
         }
 
         let key = normalize_key_name(remaining)?;
-        Ok(Self { ctrl, alt, shift, key })
+        Ok(Self {
+            ctrl,
+            alt,
+            shift,
+            key,
+        })
     }
 
     pub fn parse_list(spec: &str) -> Result<Vec<Self>, String> {
@@ -323,7 +328,12 @@ impl KeyChord {
             _ => return None,
         };
 
-        Some(Self { ctrl, alt, shift, key })
+        Some(Self {
+            ctrl,
+            alt,
+            shift,
+            key,
+        })
     }
 
     pub fn display_label(&self) -> String {
@@ -591,10 +601,22 @@ mod tests {
 
     #[test]
     fn action_id_aliases_and_case_insensitivity() {
-        assert_eq!(ActionId::from_name("open_default"), Some(ActionId::OpenDefault));
-        assert_eq!(ActionId::from_name("open-default"), Some(ActionId::OpenDefault));
-        assert_eq!(ActionId::from_name("OPEN_DEFAULT"), Some(ActionId::OpenDefault));
+        assert_eq!(
+            ActionId::from_name("open_default"),
+            Some(ActionId::OpenDefault)
+        );
+        assert_eq!(
+            ActionId::from_name("open-default"),
+            Some(ActionId::OpenDefault)
+        );
+        assert_eq!(
+            ActionId::from_name("OPEN_DEFAULT"),
+            Some(ActionId::OpenDefault)
+        );
         assert_eq!(ActionId::from_name("quit"), Some(ActionId::Exit));
-        assert_eq!(ActionId::from_name("exit-and-cd"), Some(ActionId::ExitAndCd));
+        assert_eq!(
+            ActionId::from_name("exit-and-cd"),
+            Some(ActionId::ExitAndCd)
+        );
     }
 }

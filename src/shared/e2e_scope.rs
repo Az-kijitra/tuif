@@ -58,7 +58,10 @@ mod imp {
 
 /// Raw components of `path` (both separators), with a leading `\\?\` and the UNC `\\` removed.
 fn raw_components(text: &str) -> Vec<&str> {
-    let rest = text.strip_prefix(r"\\?\").or_else(|| text.strip_prefix(r"\\")).unwrap_or(text);
+    let rest = text
+        .strip_prefix(r"\\?\")
+        .or_else(|| text.strip_prefix(r"\\"))
+        .unwrap_or(text);
     rest.split(['\\', '/']).collect()
 }
 
@@ -66,13 +69,16 @@ fn raw_components(text: &str) -> Vec<&str> {
 /// not dots-and-spaces only, no trailing space or dot (Win32 trims them). Empty components
 /// (a doubled separator, a trailing separator) are not names and are skipped.
 fn lexically_safe(text: &str) -> bool {
-    raw_components(text).into_iter().filter(|c| !c.is_empty()).all(|c| {
-        c != "."
-            && c != ".."
-            && !c.chars().all(|ch| ch == '.' || ch == ' ')
-            && !c.ends_with(' ')
-            && !c.ends_with('.')
-    })
+    raw_components(text)
+        .into_iter()
+        .filter(|c| !c.is_empty())
+        .all(|c| {
+            c != "."
+                && c != ".."
+                && !c.chars().all(|ch| ch == '.' || ch == ' ')
+                && !c.ends_with(' ')
+                && !c.ends_with('.')
+        })
 }
 
 fn lowered_components(path: &Path) -> Vec<String> {
@@ -92,18 +98,26 @@ pub struct Scope {
 
 impl Scope {
     pub fn new(canonical_root: PathBuf) -> Self {
-        Scope { root: canonical_root }
+        Scope {
+            root: canonical_root,
+        }
     }
 
     fn violation(&self, what: &str, path: &Path) -> ScopeViolation {
-        ScopeViolation(format!("{what}: {} (scope {})", path.display(), self.root.display()))
+        ScopeViolation(format!(
+            "{what}: {} (scope {})",
+            path.display(),
+            self.root.display()
+        ))
     }
 
     /// Component-wise, case-insensitive prefix test of two canonical paths.
     fn contains(&self, canonical: &Path, allow_root: bool) -> bool {
         let root = lowered_components(&self.root);
         let cand = lowered_components(canonical);
-        cand.len() >= root.len() && cand[..root.len()] == root[..] && (allow_root || cand.len() > root.len())
+        cand.len() >= root.len()
+            && cand[..root.len()] == root[..]
+            && (allow_root || cand.len() > root.len())
     }
 
     /// The path as text when it is absolute, non-empty and lexically safe.
@@ -134,7 +148,10 @@ impl Scope {
                 Err(_) => return Err(self.violation("container cannot be resolved", path)),
             }
         };
-        let full = missing.iter().rev().fold(canonical, |acc, name| acc.join(name));
+        let full = missing
+            .iter()
+            .rev()
+            .fold(canonical, |acc, name| acc.join(name));
         if self.contains(&full, true) {
             Ok(())
         } else {
@@ -148,7 +165,8 @@ impl Scope {
         let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
             return Err(self.violation(&format!("{what} has no parent"), path));
         };
-        let parent = std::fs::canonicalize(parent).map_err(|_| self.violation(&format!("{what}: parent cannot be resolved"), path))?;
+        let parent = std::fs::canonicalize(parent)
+            .map_err(|_| self.violation(&format!("{what}: parent cannot be resolved"), path))?;
         Ok(parent.join(name))
     }
 
@@ -169,7 +187,8 @@ impl Scope {
         if !self.contains(&resolved, true) {
             return Err(self.violation("outside the E2E scope (source)", path));
         }
-        let target = std::fs::canonicalize(path).map_err(|_| self.violation("source cannot be resolved", path))?;
+        let target = std::fs::canonicalize(path)
+            .map_err(|_| self.violation("source cannot be resolved", path))?;
         if self.contains(&target, true) {
             Ok(())
         } else {
@@ -179,7 +198,10 @@ impl Scope {
 
     /// `viewer_os_open_path`: ALWAYS rejected while the scope is active (R-10-5).
     pub fn check_external_launch(&self, path: &Path) -> Result<(), ScopeViolation> {
-        Err(self.violation("launching other programs is refused during an E2E run", path))
+        Err(self.violation(
+            "launching other programs is refused during an E2E run",
+            path,
+        ))
     }
 }
 
@@ -187,7 +209,9 @@ impl Scope {
 /// not absolute / contains `..` / does not exist (never created) / not a directory.
 pub fn resolve_scope(raw: Option<&OsStr>) -> Result<Option<PathBuf>, ScopeError> {
     let Some(raw) = raw else { return Ok(None) };
-    let text = raw.to_str().ok_or_else(|| ScopeError("not valid Unicode".into()))?;
+    let text = raw
+        .to_str()
+        .ok_or_else(|| ScopeError("not valid Unicode".into()))?;
     if text.trim().is_empty() {
         return Err(ScopeError("empty".into()));
     }
@@ -223,7 +247,8 @@ pub fn init_from_env() -> Result<(), ScopeError> {
 fn with_scope(f: impl Fn(&Scope) -> Result<(), ScopeViolation>) -> Result<(), ScopeViolation> {
     #[cfg(test)]
     {
-        if let Some(result) = test_override::TEST_SCOPE.with(|cell| cell.borrow().as_ref().map(&f)) {
+        if let Some(result) = test_override::TEST_SCOPE.with(|cell| cell.borrow().as_ref().map(&f))
+        {
             return result;
         }
     }

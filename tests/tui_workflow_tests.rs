@@ -1,12 +1,12 @@
-//! Integration tests for `cuifiler` (Vim-like keybinding navigation, file operations, search,
+//! Integration tests for `tuif` (Vim-like keybinding navigation, file operations, search,
 //! viewer overlay, external CUI tool resolution, and headless Ratatui rendering).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
-use cuifiler::app::{AppState, FocusPane, OverlayMode};
-use cuifiler::tui;
+use tuif::app::{AppState, FocusPane, OverlayMode};
+use tuif::tui;
 
 fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
@@ -18,10 +18,13 @@ fn key_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
 
 #[test]
 fn open_default_app_default_bindings() {
-    use cuifiler::keymap::{ActionId, KeyChord, Keymap};
+    use tuif::keymap::{ActionId, KeyChord, Keymap};
     let (mut km, rejected) = Keymap::from_custom(&[]);
     assert!(rejected.is_empty());
-    for ev in [key(KeyCode::Char('o')), key_mod(KeyCode::Enter, KeyModifiers::SHIFT)] {
+    for ev in [
+        key(KeyCode::Char('o')),
+        key_mod(KeyCode::Enter, KeyModifiers::SHIFT),
+    ] {
         let chord = KeyChord::from_crossterm(ev).unwrap();
         assert_eq!(km.resolve(&chord), Some(ActionId::OpenDefault), "{chord:?}");
     }
@@ -56,11 +59,11 @@ fn vim_navigation_and_file_ops_workflow() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     std::fs::create_dir(root.join("dir_a")).unwrap();
-    std::fs::write(root.join("file1.txt"), b"hello cuifiler\nline 2").unwrap();
+    std::fs::write(root.join("file1.txt"), b"hello tuif\nline 2").unwrap();
     std::fs::write(root.join("file2.md"), b"# Title\nmarkdown body").unwrap();
 
     let mut app = AppState::new(root.to_path_buf());
-    app.ui_state = cuifiler::shared::schema::ui_state::UiStateData::default();
+    app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
     assert_eq!(app.entries.len(), 3);
     // Directories come first (`dir_a`, `file1.txt`, `file2.md`)
@@ -177,7 +180,7 @@ fn multi_column_left_right_navigation_tracks_terminal_height() {
     }
 
     let mut app = AppState::new(root.to_path_buf());
-    app.ui_state = cuifiler::shared::schema::ui_state::UiStateData::default();
+    app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
 
     // Terminal height 11 -> top_rows(2) + status(1) + borders(2) = 5 -> list_rows_per_col = 6
@@ -220,7 +223,7 @@ fn parent_navigation_preserves_cursor_on_child_folder() {
 
     // Start inside `beta_dir/nested`
     let mut app = AppState::new(root.join("beta_dir").join("nested"));
-    app.ui_state = cuifiler::shared::schema::ui_state::UiStateData::default();
+    app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
 
     // Go up 1 level (`-` -> `beta_dir`) -> cursor is on `nested`
@@ -251,7 +254,7 @@ fn mouse_explorer_workflow_left_double_and_right_click_action_menu() {
     std::fs::write(root.join("beta.txt"), b"beta").unwrap();
 
     let mut app = AppState::new(root.to_path_buf());
-    app.ui_state = cuifiler::shared::schema::ui_state::UiStateData::default();
+    app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
     app.update_viewport_size(100, 28);
 
@@ -284,7 +287,7 @@ fn mouse_explorer_workflow_left_double_and_right_click_action_menu() {
     };
     let (popup, _, _) = tui::popup_list_geometry(
         area,
-        cuifiler::app::ACTION_MENU_FIXED_COUNT + app.external_apps.len(),
+        tuif::app::ACTION_MENU_FIXED_COUNT + app.external_apps.len(),
         0,
     );
     app.handle_mouse_event(MouseEvent {
@@ -315,7 +318,7 @@ fn mouse_explorer_workflow_left_double_and_right_click_action_menu() {
 #[test]
 fn tree_right_click_action_menu_and_gui_apps_workflow() {
     use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-    use cuifiler::app::{FocusPane, InputPromptKind};
+    use tuif::app::{FocusPane, InputPromptKind};
 
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
@@ -325,13 +328,19 @@ fn tree_right_click_action_menu_and_gui_apps_workflow() {
     std::fs::create_dir(&dir_b).unwrap();
 
     let mut app = AppState::new(root.to_path_buf());
-    app.ui_state = cuifiler::shared::schema::ui_state::UiStateData::default();
+    app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
     app.update_viewport_size(100, 28);
 
     // Verify GUI external apps are registered
-    assert!(app.external_apps.iter().any(|a| a.name == "Open VSCode" && a.is_gui));
-    assert!(app.external_apps.iter().any(|a| a.name == "Open Explorer" && a.is_gui));
+    assert!(app
+        .external_apps
+        .iter()
+        .any(|a| a.name == "Open VSCode" && a.is_gui));
+    assert!(app
+        .external_apps
+        .iter()
+        .any(|a| a.name == "Open Explorer" && a.is_gui));
 
     // Find `beta_dir` in `app.tree_nodes`
     let beta_tree_idx = app
@@ -365,7 +374,7 @@ fn tree_right_click_action_menu_and_gui_apps_workflow() {
     };
     let (popup, _, _) = tui::popup_list_geometry(
         area,
-        cuifiler::app::ACTION_MENU_FIXED_COUNT + app.external_apps.len(),
+        tuif::app::ACTION_MENU_FIXED_COUNT + app.external_apps.len(),
         0,
     );
     app.handle_mouse_event(MouseEvent {
@@ -419,7 +428,7 @@ fn tree_selection_switches_from_remote_to_local_directory() {
 
 #[test]
 fn fuzzy_search_shortcuts_and_post_selection_navigation() {
-    use cuifiler::external_apps::{FuzzyKind, FuzzySelection};
+    use tuif::external_apps::{FuzzyKind, FuzzySelection};
 
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
@@ -436,18 +445,27 @@ fn fuzzy_search_shortcuts_and_post_selection_navigation() {
 
     // 1. Ctrl+P triggers FuzzyFindFile
     app.handle_key_event(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL));
-    let pending = app.pending_fuzzy.take().expect("Ctrl+P should set pending_fuzzy");
+    let pending = app
+        .pending_fuzzy
+        .take()
+        .expect("Ctrl+P should set pending_fuzzy");
     assert_eq!(pending.kind, FuzzyKind::FindFile);
     assert_eq!(pending.working_dir, root.to_path_buf());
 
     // 2. Shift+F ('F') triggers FuzzyLiveGrep
     app.handle_key_event(KeyEvent::new(KeyCode::Char('F'), KeyModifiers::SHIFT));
-    let pending = app.pending_fuzzy.take().expect("Shift+F should set pending_fuzzy");
+    let pending = app
+        .pending_fuzzy
+        .take()
+        .expect("Shift+F should set pending_fuzzy");
     assert_eq!(pending.kind, FuzzyKind::LiveGrep);
 
     // 3. 'f' triggers FuzzyJumpDir
     app.handle_key_event(key(KeyCode::Char('f')));
-    let pending = app.pending_fuzzy.take().expect("'f' should set pending_fuzzy");
+    let pending = app
+        .pending_fuzzy
+        .take()
+        .expect("'f' should set pending_fuzzy");
     assert_eq!(pending.kind, FuzzyKind::JumpDir);
 
     // 4. Selecting a file in FuzzyFindFile / FuzzyLiveGrep navigates to its parent folder and focuses the file
@@ -487,7 +505,10 @@ fn viewer_search_and_navigation_workflow() {
 
     // 1. Press '/' to open search input prompt
     app.handle_key_event(key(KeyCode::Char('/')));
-    if let OverlayMode::Viewer { ref search_input, .. } = app.overlay {
+    if let OverlayMode::Viewer {
+        ref search_input, ..
+    } = app.overlay
+    {
         assert_eq!(search_input.as_deref(), Some(""));
     } else {
         panic!("expected viewer overlay");
@@ -520,14 +541,24 @@ fn viewer_search_and_navigation_workflow() {
 
     // 3. 'n' jumps to next match (line 3)
     app.handle_key_event(key(KeyCode::Char('n')));
-    if let OverlayMode::Viewer { match_cursor, scroll_y, .. } = app.overlay {
+    if let OverlayMode::Viewer {
+        match_cursor,
+        scroll_y,
+        ..
+    } = app.overlay
+    {
         assert_eq!(match_cursor, Some(1));
         assert_eq!(scroll_y, 3);
     }
 
     // 4. 'N' jumps back to previous match (line 1)
     app.handle_key_event(key(KeyCode::Char('N')));
-    if let OverlayMode::Viewer { match_cursor, scroll_y, .. } = app.overlay {
+    if let OverlayMode::Viewer {
+        match_cursor,
+        scroll_y,
+        ..
+    } = app.overlay
+    {
         assert_eq!(match_cursor, Some(0));
         assert_eq!(scroll_y, 1);
     }
@@ -539,7 +570,10 @@ fn viewer_search_and_navigation_workflow() {
 
     // 6. 'Esc' clears search query
     app.handle_key_event(key(KeyCode::Esc));
-    if let OverlayMode::Viewer { ref search_query, .. } = app.overlay {
+    if let OverlayMode::Viewer {
+        ref search_query, ..
+    } = app.overlay
+    {
         assert!(search_query.is_none());
     }
 
@@ -547,6 +581,3 @@ fn viewer_search_and_navigation_workflow() {
     app.handle_key_event(key(KeyCode::Esc));
     assert_eq!(app.overlay, OverlayMode::None);
 }
-
-
-

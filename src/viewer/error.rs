@@ -84,7 +84,10 @@ impl ViewerErrorCode {
 
 impl From<ViewerError> for ViewerErrorDto {
     fn from(err: ViewerError) -> Self {
-        ViewerErrorDto { code: err.code.as_str().to_string(), message: err.message }
+        ViewerErrorDto {
+            code: err.code.as_str().to_string(),
+            message: err.message,
+        }
     }
 }
 

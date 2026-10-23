@@ -15,8 +15,14 @@ fn r440_wire_strings_match_the_specified_code_table() {
         (ViewerErrorCode::NotFound, "not_found"),
         (ViewerErrorCode::NotAFile, "not_a_file"),
         (ViewerErrorCode::PermissionDenied, "permission_denied"),
-        (ViewerErrorCode::ViewerPathNotAllowed, "viewer_path_not_allowed"),
-        (ViewerErrorCode::ViewerImageTooLarge, "viewer_image_too_large"),
+        (
+            ViewerErrorCode::ViewerPathNotAllowed,
+            "viewer_path_not_allowed",
+        ),
+        (
+            ViewerErrorCode::ViewerImageTooLarge,
+            "viewer_image_too_large",
+        ),
         (ViewerErrorCode::IoError, "io_error"),
         (ViewerErrorCode::Unknown, "unknown"),
         (ViewerErrorCode::InvalidPath, "invalid_path"),
@@ -49,7 +55,10 @@ fn classify_io_error_everything_else_is_io_error() {
 // R-447: the DTO carries the wire string, not the Rust-only enum.
 #[test]
 fn dto_conversion_carries_the_wire_code_and_message() {
-    let err = ViewerError { code: ViewerErrorCode::ViewerPathNotAllowed, message: "nope".into() };
+    let err = ViewerError {
+        code: ViewerErrorCode::ViewerPathNotAllowed,
+        message: "nope".into(),
+    };
     let dto: ViewerErrorDto = err.into();
     assert_eq!(dto.code, "viewer_path_not_allowed");
     assert_eq!(dto.message, "nope");
@@ -58,7 +67,10 @@ fn dto_conversion_carries_the_wire_code_and_message() {
 // R-447: internal representation (`code=...`) never leaks as the message text.
 #[test]
 fn the_dto_message_never_looks_like_the_internal_debug_form() {
-    let err = ViewerError { code: ViewerErrorCode::IoError, message: "disk error".into() };
+    let err = ViewerError {
+        code: ViewerErrorCode::IoError,
+        message: "disk error".into(),
+    };
     let dto: ViewerErrorDto = err.into();
     assert!(!dto.message.starts_with("code="));
 }
@@ -72,7 +84,15 @@ fn r440_invalid_path_is_the_eighth_code_and_all_wire_strings_are_distinct() {
     let wires: Vec<&str> = ViewerErrorCode::ALL.iter().map(|c| c.as_str()).collect();
     assert_eq!(ViewerErrorCode::ALL.len(), 8, "{wires:?}");
     assert!(wires.contains(&"invalid_path"), "{wires:?}");
-    for existing in ["not_found", "not_a_file", "permission_denied", "viewer_path_not_allowed", "viewer_image_too_large", "io_error", "unknown"] {
+    for existing in [
+        "not_found",
+        "not_a_file",
+        "permission_denied",
+        "viewer_path_not_allowed",
+        "viewer_image_too_large",
+        "io_error",
+        "unknown",
+    ] {
         assert!(wires.contains(&existing), "{existing} must stay: {wires:?}");
     }
     let mut sorted = wires.clone();
@@ -84,15 +104,33 @@ fn r440_invalid_path_is_the_eighth_code_and_all_wire_strings_are_distinct() {
 // `classify_io_error` is NOT changed: no `ErrorKind` becomes `invalid_path`.
 #[test]
 fn classify_io_error_never_returns_invalid_path() {
-    for kind in [io::ErrorKind::InvalidInput, io::ErrorKind::InvalidData, io::ErrorKind::NotFound, io::ErrorKind::PermissionDenied, io::ErrorKind::Other] {
-        assert_ne!(classify_io_error(&io::Error::new(kind, "x")).as_str(), "invalid_path", "{kind:?}");
+    for kind in [
+        io::ErrorKind::InvalidInput,
+        io::ErrorKind::InvalidData,
+        io::ErrorKind::NotFound,
+        io::ErrorKind::PermissionDenied,
+        io::ErrorKind::Other,
+    ] {
+        assert_ne!(
+            classify_io_error(&io::Error::new(kind, "x")).as_str(),
+            "invalid_path",
+            "{kind:?}"
+        );
     }
 }
 
 #[test]
 fn the_invalid_path_code_reaches_the_dto_unchanged() {
-    let code = ViewerErrorCode::ALL.iter().copied().find(|c| c.as_str() == "invalid_path").expect("InvalidPath in ALL");
-    let dto: ViewerErrorDto = ViewerError { code, message: "絶対パスではありません".into() }.into();
+    let code = ViewerErrorCode::ALL
+        .iter()
+        .copied()
+        .find(|c| c.as_str() == "invalid_path")
+        .expect("InvalidPath in ALL");
+    let dto: ViewerErrorDto = ViewerError {
+        code,
+        message: "絶対パスではありません".into(),
+    }
+    .into();
     assert_eq!(dto.code, "invalid_path");
     assert_eq!(dto.message, "絶対パスではありません");
 }

@@ -79,7 +79,10 @@ fn a_non_string_ui_theme_is_wrong_type() {
         let (_d, path) = write_config(body);
         let r = load(&path);
         assert_eq!(r.ui_theme, UiThemeRaw::WrongType, "body {body:?}");
-        assert!(r.keymap.parse_error.is_none(), "a wrong-typed ui_theme is not a whole-file failure: {body:?}");
+        assert!(
+            r.keymap.parse_error.is_none(),
+            "a wrong-typed ui_theme is not a whole-file failure: {body:?}"
+        );
     }
 }
 
@@ -91,7 +94,10 @@ fn ui_theme_inside_another_table_is_not_the_theme_setting() {
     assert_eq!(r.ui_theme, UiThemeRaw::Missing);
     assert_eq!(
         r.keymap.entries,
-        vec![RawKeymapEntry { action_id: "ui_theme".into(), value: Some("Ctrl+Alt+T".into()) }]
+        vec![RawKeymapEntry {
+            action_id: "ui_theme".into(),
+            value: Some("Ctrl+Alt+T".into())
+        }]
     );
 }
 
@@ -123,8 +129,14 @@ fn one_load_returns_both_the_keymap_entries_and_the_ui_theme() {
     assert_eq!(
         entries,
         vec![
-            RawKeymapEntry { action_id: "sort_menu".into(), value: None },
-            RawKeymapEntry { action_id: "toggle_time".into(), value: Some("Ctrl+Alt+T".into()) },
+            RawKeymapEntry {
+                action_id: "sort_menu".into(),
+                value: None
+            },
+            RawKeymapEntry {
+                action_id: "toggle_time".into(),
+                value: Some("Ctrl+Alt+T".into())
+            },
         ]
     );
 }
@@ -132,17 +144,28 @@ fn one_load_returns_both_the_keymap_entries_and_the_ui_theme() {
 // AC-958: an invalid ui_theme does not disturb the (valid) keymap of the same file.
 #[test]
 fn an_invalid_ui_theme_leaves_the_keymap_entries_intact() {
-    let (_d, path) = write_config("ui_theme = \"Dark\"\n\n[input_keymap_custom]\ntoggle_time = \"Ctrl+Alt+T\"\n");
+    let (_d, path) = write_config(
+        "ui_theme = \"Dark\"\n\n[input_keymap_custom]\ntoggle_time = \"Ctrl+Alt+T\"\n",
+    );
     let r = load(&path);
     assert_eq!(r.ui_theme, s("Dark"));
     assert!(r.keymap.parse_error.is_none());
-    assert_eq!(r.keymap.entries, vec![RawKeymapEntry { action_id: "toggle_time".into(), value: Some("Ctrl+Alt+T".into()) }]);
+    assert_eq!(
+        r.keymap.entries,
+        vec![RawKeymapEntry {
+            action_id: "toggle_time".into(),
+            value: Some("Ctrl+Alt+T".into())
+        }]
+    );
 }
 
 // ------------------------------------------------------------------ R-917-5 case 2: whole file unreadable
 
 fn whole_file_error(r: &super::config_toml::ConfigTomlLoadResult) -> &KeymapParseError {
-    r.keymap.parse_error.as_ref().expect("a whole-file failure must be reported")
+    r.keymap
+        .parse_error
+        .as_ref()
+        .expect("a whole-file failure must be reported")
 }
 
 // AC-959 (ii): a TOML syntax error -> whole_file, and the theme falls back with it (Missing), even if a
@@ -153,7 +176,10 @@ fn a_syntax_error_is_a_whole_file_failure_and_ui_theme_is_missing() {
     let r = load(&path);
     let err = whole_file_error(&r);
     assert!(err.whole_file);
-    assert!(err.line.is_some(), "the line number is still recovered (R-45-2)");
+    assert!(
+        err.line.is_some(),
+        "the line number is still recovered (R-45-2)"
+    );
     assert_eq!(r.keymap.entries, Vec::new());
     assert_eq!(r.ui_theme, UiThemeRaw::Missing);
 }
@@ -188,7 +214,10 @@ fn input_keymap_custom_of_the_wrong_type_keeps_a_valid_ui_theme() {
     let (_d, path) = write_config("ui_theme = \"dark\"\ninput_keymap_custom = \"Ctrl+X\"\n");
     let r = load(&path);
     let err = whole_file_error(&r);
-    assert!(!err.whole_file, "R-917-5 case 3: the R-45-2 notice must not mention the theme");
+    assert!(
+        !err.whole_file,
+        "R-917-5 case 3: the R-45-2 notice must not mention the theme"
+    );
     assert_eq!(r.keymap.entries, Vec::new());
     assert_eq!(r.ui_theme, s("dark"));
 }
@@ -212,7 +241,9 @@ fn input_keymap_custom_of_the_wrong_type_without_ui_theme_has_ui_theme_missing()
 // A healthy file never reports a parse error (so `whole_file` can never be misread as set).
 #[test]
 fn a_healthy_file_has_no_parse_error() {
-    let (_d, path) = write_config("ui_theme = \"light\"\n[input_keymap_custom]\ntoggle_hidden = \"Ctrl+Alt+H\"\n");
+    let (_d, path) = write_config(
+        "ui_theme = \"light\"\n[input_keymap_custom]\ntoggle_hidden = \"Ctrl+Alt+H\"\n",
+    );
     assert!(load(&path).keymap.parse_error.is_none());
 }
 
@@ -228,22 +259,45 @@ fn ac63_ac630_ac960_load_never_modifies_content_or_mtime_with_ui_theme_present()
     load(&path);
     load(&path);
 
-    assert_eq!(fs::read_to_string(&path).unwrap(), original, "content (comments included) must be byte-for-byte unchanged");
-    assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), mtime_before, "mtime must be unchanged");
-    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1, "no sibling file (.bak / .tmp) may appear");
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        original,
+        "content (comments included) must be byte-for-byte unchanged"
+    );
+    assert_eq!(
+        fs::metadata(&path).unwrap().modified().unwrap(),
+        mtime_before,
+        "mtime must be unchanged"
+    );
+    assert_eq!(
+        fs::read_dir(dir.path()).unwrap().count(),
+        1,
+        "no sibling file (.bak / .tmp) may appear"
+    );
 }
 
 // AC-960 / R-45-3: the failure paths do not touch the file either.
 #[test]
 fn ac63_load_leaves_a_broken_or_wrong_typed_file_untouched() {
-    for body in ["ui_theme = \"dark\"\nthis is = = not toml [[[", "ui_theme = \"dark\"\ninput_keymap_custom = \"x\"\n", "ui_theme = 1\n"] {
+    for body in [
+        "ui_theme = \"dark\"\nthis is = = not toml [[[",
+        "ui_theme = \"dark\"\ninput_keymap_custom = \"x\"\n",
+        "ui_theme = 1\n",
+    ] {
         let (dir, path) = write_config(body);
         let mtime_before = fs::metadata(&path).unwrap().modified().unwrap();
 
         load(&path);
 
         assert_eq!(fs::read_to_string(&path).unwrap(), body);
-        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), mtime_before);
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1, "no .bak is ever created for config.toml");
+        assert_eq!(
+            fs::metadata(&path).unwrap().modified().unwrap(),
+            mtime_before
+        );
+        assert_eq!(
+            fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "no .bak is ever created for config.toml"
+        );
     }
 }

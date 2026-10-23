@@ -80,7 +80,11 @@ pub fn fs_list_dir(
 
         let metadata = dir_entry.metadata()?;
         let is_dir = metadata.is_dir();
-        let entry_type = if is_dir { EntryType::Dir } else { EntryType::File };
+        let entry_type = if is_dir {
+            EntryType::Dir
+        } else {
+            EntryType::File
+        };
         // AC-13: directories never carry a numeric size.
         let size = if is_dir { 0 } else { metadata.len() };
         let ext = extract_ext(&name, is_dir);
@@ -126,12 +130,13 @@ pub fn fs_list_dir_with_options(
 
         let metadata = dir_entry.metadata()?;
         let is_dir = metadata.is_dir();
-        let entry_type = if is_dir { EntryType::Dir } else { EntryType::File };
+        let entry_type = if is_dir {
+            EntryType::Dir
+        } else {
+            EntryType::File
+        };
         let size = if is_dir { 0 } else { metadata.len() };
-        let modified = metadata
-            .modified()
-            .map(format_modified)
-            .unwrap_or_default();
+        let modified = metadata.modified().map(format_modified).unwrap_or_default();
         let ext = extract_ext(&name, is_dir);
 
         entries.push(Entry {
@@ -201,7 +206,12 @@ fn compare_name(a: &Entry, b: &Entry) -> Ordering {
     a.name.to_lowercase().cmp(&b.name.to_lowercase())
 }
 
-fn compare_type_with_options(a: &Entry, b: &Entry, dirs_first: bool, natural_sort: bool) -> Ordering {
+fn compare_type_with_options(
+    a: &Entry,
+    b: &Entry,
+    dirs_first: bool,
+    natural_sort: bool,
+) -> Ordering {
     if dirs_first {
         let a_is_dir = a.entry_type == EntryType::Dir;
         let b_is_dir = b.entry_type == EntryType::Dir;
@@ -341,8 +351,14 @@ mod tests {
         fs::create_dir(dir.path().join("subdir")).expect("create subdir");
 
         let entries = fs_list_dir(dir.path(), false, "name", "asc").expect("fs_list_dir");
-        let subdir = entries.iter().find(|e| e.name == "subdir").expect("subdir entry present");
-        assert_eq!(subdir.size, 0, "directory entries must not carry a file size");
+        let subdir = entries
+            .iter()
+            .find(|e| e.name == "subdir")
+            .expect("subdir entry present");
+        assert_eq!(
+            subdir.size, 0,
+            "directory entries must not carry a file size"
+        );
         assert!(matches!(subdir.entry_type, EntryType::Dir));
     }
 
@@ -384,9 +400,15 @@ mod tests {
         write_file(dir.path(), ".hidden.txt", b"1");
 
         let entries = fs_list_dir(dir.path(), true, "name", "asc").expect("fs_list_dir");
-        let hidden_entry = entries.iter().find(|e| e.name == ".hidden.txt").expect(".hidden.txt present");
+        let hidden_entry = entries
+            .iter()
+            .find(|e| e.name == ".hidden.txt")
+            .expect(".hidden.txt present");
         assert!(hidden_entry.hidden);
-        let visible_entry = entries.iter().find(|e| e.name == "visible.txt").expect("visible.txt present");
+        let visible_entry = entries
+            .iter()
+            .find(|e| e.name == "visible.txt")
+            .expect("visible.txt present");
         assert!(!visible_entry.hidden);
     }
 
@@ -417,14 +439,20 @@ mod tests {
         write_file(dir.path(), "a.txt", b"hello");
 
         let entries = fs_list_dir(dir.path(), false, "name", "asc").expect("fs_list_dir");
-        let entry = entries.into_iter().find(|e| e.name == "a.txt").expect("a.txt present");
+        let entry = entries
+            .into_iter()
+            .find(|e| e.name == "a.txt")
+            .expect("a.txt present");
         assert_eq!(entry.ext, "txt");
     }
 
     #[test]
     fn natural_sort_orders_numbers_numerically() {
         assert_eq!(compare_natural("file2.txt", "file10.txt"), Ordering::Less);
-        assert_eq!(compare_natural("file10.txt", "file2.txt"), Ordering::Greater);
+        assert_eq!(
+            compare_natural("file10.txt", "file2.txt"),
+            Ordering::Greater
+        );
         assert_eq!(compare_natural("file1.txt", "file2.txt"), Ordering::Less);
         assert_eq!(compare_natural("file1.txt", "file1.txt"), Ordering::Equal);
     }
@@ -436,12 +464,14 @@ mod tests {
         write_file(dir.path(), "a_file.txt", b"1");
 
         // With dirs_first = true
-        let entries = fs_list_dir_with_options(dir.path(), false, "name", "asc", true, true).expect("fs_list");
+        let entries = fs_list_dir_with_options(dir.path(), false, "name", "asc", true, true)
+            .expect("fs_list");
         let names: Vec<_> = entries.iter().map(|e| e.name.clone()).collect();
         assert_eq!(names, vec!["z_dir", "a_file.txt"]);
 
         // With dirs_first = false
-        let entries = fs_list_dir_with_options(dir.path(), false, "name", "asc", false, true).expect("fs_list");
+        let entries = fs_list_dir_with_options(dir.path(), false, "name", "asc", false, true)
+            .expect("fs_list");
         let names: Vec<_> = entries.iter().map(|e| e.name.clone()).collect();
         assert_eq!(names, vec!["a_file.txt", "z_dir"]);
     }

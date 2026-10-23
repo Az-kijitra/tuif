@@ -67,7 +67,10 @@ mod tests {
         let result = rename_entry(&original, "existing.txt");
 
         assert!(result.is_err());
-        assert!(original.exists(), "the original entry must remain in place after a rejected rename");
+        assert!(
+            original.exists(),
+            "the original entry must remain in place after a rejected rename"
+        );
         assert_eq!(fs::read(&existing_sibling).expect("read sibling"), b"2");
     }
 

@@ -67,7 +67,9 @@ pub fn check_eocd<R: Read + Seek>(reader: &mut R) -> Result<EocdInfo, ArchiveErr
     let length = reader.seek(SeekFrom::End(0)).map_err(io_error)?;
     let window = length.min(MAX_COMMENT + EOCD_LEN as u64);
     let window_start = length - window;
-    reader.seek(SeekFrom::Start(window_start)).map_err(io_error)?;
+    reader
+        .seek(SeekFrom::Start(window_start))
+        .map_err(io_error)?;
     let mut tail = vec![0u8; window as usize];
     reader.read_exact(&mut tail).map_err(io_error)?;
 
@@ -77,7 +79,8 @@ pub fn check_eocd<R: Read + Seek>(reader: &mut R) -> Result<EocdInfo, ArchiveErr
     let position = (0..=tail.len() - EOCD_LEN)
         .rev()
         .find(|&i| {
-            tail[i..i + 4] == EOCD_SIGNATURE && i + EOCD_LEN + le16(&tail, i + 20) as usize <= tail.len()
+            tail[i..i + 4] == EOCD_SIGNATURE
+                && i + EOCD_LEN + le16(&tail, i + 20) as usize <= tail.len()
         })
         .ok_or_else(|| corrupt("no end-of-central-directory record found"))?;
 
@@ -93,7 +96,9 @@ pub fn check_eocd<R: Read + Seek>(reader: &mut R) -> Result<EocdInfo, ArchiveErr
     let eocd_file_offset = window_start + position as u64;
     if eocd_file_offset >= ZIP64_LOCATOR_LEN {
         let locator_offset = eocd_file_offset - ZIP64_LOCATOR_LEN;
-        reader.seek(SeekFrom::Start(locator_offset)).map_err(io_error)?;
+        reader
+            .seek(SeekFrom::Start(locator_offset))
+            .map_err(io_error)?;
         let mut locator = [0u8; ZIP64_LOCATOR_LEN as usize];
         reader.read_exact(&mut locator).map_err(io_error)?;
         if locator[..4] == ZIP64_LOCATOR_SIGNATURE {
@@ -103,20 +108,32 @@ pub fn check_eocd<R: Read + Seek>(reader: &mut R) -> Result<EocdInfo, ArchiveErr
             if locator_disk != 0 || total_disks > 1 {
                 return Err(unsupported("multi-volume ZIP archives are not supported"));
             }
-            if record_offset.checked_add(ZIP64_RECORD_MIN_LEN as u64).is_none_or(|end| end > length) {
-                return Err(corrupt("the ZIP64 end-of-central-directory record is out of range"));
+            if record_offset
+                .checked_add(ZIP64_RECORD_MIN_LEN as u64)
+                .is_none_or(|end| end > length)
+            {
+                return Err(corrupt(
+                    "the ZIP64 end-of-central-directory record is out of range",
+                ));
             }
-            reader.seek(SeekFrom::Start(record_offset)).map_err(io_error)?;
+            reader
+                .seek(SeekFrom::Start(record_offset))
+                .map_err(io_error)?;
             let mut record = [0u8; ZIP64_RECORD_MIN_LEN];
             reader.read_exact(&mut record).map_err(io_error)?;
             if record[..4] != ZIP64_RECORD_SIGNATURE {
-                return Err(corrupt("the ZIP64 end-of-central-directory record is missing"));
+                return Err(corrupt(
+                    "the ZIP64 end-of-central-directory record is missing",
+                ));
             }
             let record_this_disk = le32(&record, 16);
             let record_cd_disk = le32(&record, 20);
             let record_entries_this_disk = le64(&record, 24);
             let record_entries_total = le64(&record, 32);
-            if record_this_disk != 0 || record_cd_disk != 0 || record_entries_this_disk != record_entries_total {
+            if record_this_disk != 0
+                || record_cd_disk != 0
+                || record_entries_this_disk != record_entries_total
+            {
                 return Err(unsupported("multi-volume ZIP archives are not supported"));
             }
             // The ZIP64 count is authoritative only where the 16-bit field is
@@ -124,7 +141,9 @@ pub fn check_eocd<R: Read + Seek>(reader: &mut R) -> Result<EocdInfo, ArchiveErr
             if entries_total == 0xFFFF {
                 total = record_entries_total;
             } else if u64::from(entries_total) != record_entries_total {
-                return Err(corrupt("the entry counts of the ZIP64 and the ordinary end records disagree"));
+                return Err(corrupt(
+                    "the entry counts of the ZIP64 and the ordinary end records disagree",
+                ));
             }
         }
     }
@@ -135,7 +154,9 @@ pub fn check_eocd<R: Read + Seek>(reader: &mut R) -> Result<EocdInfo, ArchiveErr
             format!("the archive declares {total} entries (limit {MAX_ENTRIES})"),
         ));
     }
-    Ok(EocdInfo { total_entries: total })
+    Ok(EocdInfo {
+        total_entries: total,
+    })
 }
 
 /// Convenience: opens `path` and runs `check_eocd`; I/O errors are classified

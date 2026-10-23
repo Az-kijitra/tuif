@@ -26,7 +26,9 @@ mod tests {
             self_path: &std::path::Path,
             offending: &mut Vec<std::path::PathBuf>,
         ) {
-            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {

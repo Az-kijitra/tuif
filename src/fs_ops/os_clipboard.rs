@@ -176,10 +176,9 @@ mod imp {
     fn get_preferred_drop_effect_format() -> u32 {
         // "Preferred DropEffect\0" in UTF-16
         static FORMAT_NAME: &[u16] = &[
-            'P' as u16, 'r' as u16, 'e' as u16, 'f' as u16, 'e' as u16, 'r' as u16,
-            'r' as u16, 'e' as u16, 'd' as u16, ' ' as u16, 'D' as u16, 'r' as u16,
-            'o' as u16, 'p' as u16, 'E' as u16, 'f' as u16, 'f' as u16, 'e' as u16,
-            'c' as u16, 't' as u16, 0,
+            'P' as u16, 'r' as u16, 'e' as u16, 'f' as u16, 'e' as u16, 'r' as u16, 'r' as u16,
+            'e' as u16, 'd' as u16, ' ' as u16, 'D' as u16, 'r' as u16, 'o' as u16, 'p' as u16,
+            'E' as u16, 'f' as u16, 'f' as u16, 'e' as u16, 'c' as u16, 't' as u16, 0,
         ];
         unsafe { RegisterClipboardFormatW(FORMAT_NAME.as_ptr()) }
     }
@@ -304,7 +303,11 @@ mod imp {
         }
 
         unsafe {
-            std::ptr::copy_nonoverlapping(hdrop_bytes.as_ptr(), dest_ptr as *mut u8, hdrop_bytes.len());
+            std::ptr::copy_nonoverlapping(
+                hdrop_bytes.as_ptr(),
+                dest_ptr as *mut u8,
+                hdrop_bytes.len(),
+            );
             GlobalUnlock(h_mem);
         }
 

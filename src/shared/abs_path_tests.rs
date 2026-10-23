@@ -10,7 +10,9 @@
 //! strict-GUID values are NOT in that comparison (R-722-3 M-2 (a) / MINOR-9); they are only here.
 //!
 
-use super::abs_path::{first_relative, is_absolute_path, is_absolute_path_buf, INVALID_PATH_CODE, MAX_PATH_UTF16};
+use super::abs_path::{
+    first_relative, is_absolute_path, is_absolute_path_buf, INVALID_PATH_CODE, MAX_PATH_UTF16,
+};
 
 const GUID: &str = "12345678-1234-1234-1234-123456789abc";
 const SPEC_GUID: &str = "01234567-89ab-cdef-0123-456789abcdef";
@@ -63,7 +65,11 @@ fn ac757_rejected() -> Vec<String> {
 
 /// Known limitation T-12: device paths behind `\\?\` ARE accepted (fixed so that nobody tightens it by accident).
 fn t12_accepted() -> Vec<String> {
-    vec![r"\\?\PhysicalDrive0".into(), r"\\?\pipe\x".into(), r"\\?\C:".into()]
+    vec![
+        r"\\?\PhysicalDrive0".into(),
+        r"\\?\pipe\x".into(),
+        r"\\?\C:".into(),
+    ]
 }
 
 #[test]
@@ -77,7 +83,11 @@ fn ac757_every_representative_absolute_path_is_accepted() {
 fn ac757_every_representative_non_absolute_path_is_rejected() {
     for p in ac757_rejected() {
         let shown: String = p.chars().take(40).collect();
-        assert!(!is_absolute_path(&p), "must NOT be absolute: {shown:?} (len {})", utf16_len(&p));
+        assert!(
+            !is_absolute_path(&p),
+            "must NOT be absolute: {shown:?} (len {})",
+            utf16_len(&p)
+        );
     }
 }
 
@@ -133,14 +143,31 @@ fn a_drive_root_is_absolute() {
 
 #[test]
 fn rejects_relative_drive_relative_root_relative_and_empty() {
-    for p in ["", "a.txt", r"rel\b.txt", "C:rel", "C:", r"\root\c", r"\x", ".", ".."] {
+    for p in [
+        "",
+        "a.txt",
+        r"rel\b.txt",
+        "C:rel",
+        "C:",
+        r"\root\c",
+        r"\x",
+        ".",
+        "..",
+    ] {
         assert!(!is_absolute_path(p), "must reject {p:?}");
     }
 }
 
 #[test]
 fn rejects_device_opening_forms_and_a_drive_without_trailing_backslash() {
-    for p in [r"\\.\PhysicalDrive0", r"\\.\pipe\p", r"\\.\COM1", r"\\.\C:", r"\\.\", r"\\.\NUL"] {
+    for p in [
+        r"\\.\PhysicalDrive0",
+        r"\\.\pipe\p",
+        r"\\.\COM1",
+        r"\\.\C:",
+        r"\\.\",
+        r"\\.\NUL",
+    ] {
         assert!(!is_absolute_path(p), "must reject {p}");
     }
 }
@@ -158,7 +185,10 @@ fn drive_letters_are_ascii_only() {
 #[test]
 fn the_device_namespace_volume_guid_must_be_a_strict_guid_with_a_trailing_backslash() {
     assert!(!is_absolute_path(r"\\.\Volume{abc}\x"));
-    assert!(!is_absolute_path(&format!(r"\\.\Volume{{{GUID}}}")), "no trailing `\\` names the device itself");
+    assert!(
+        !is_absolute_path(&format!(r"\\.\Volume{{{GUID}}}")),
+        "no trailing `\\` names the device itself"
+    );
     assert!(is_absolute_path(&format!(r"\\.\Volume{{{GUID}}}\")));
     // `\\?\Volume{..}` is just a `\\?\` path: accepted whatever follows.
     assert!(is_absolute_path(r"\\?\Volume{abc}\x"));
@@ -193,15 +223,27 @@ fn surrogate_pairs_count_as_two_utf16_units() {
     let over = format!("{exact}a");
     assert_eq!(utf16_len(&over), 32_768);
     assert!(!is_absolute_path(&over));
-    assert!(over.chars().count() < 32_767, "by chars().count() it would still look short");
+    assert!(
+        over.chars().count() < 32_767,
+        "by chars().count() it would still look short"
+    );
 }
 
 // ---- is_absolute_path_buf (resolved ZIP paths, T-13) ----------------------------------------------
 
 #[test]
 fn the_pathbuf_form_gives_the_same_answer_as_the_str_form() {
-    for p in ac757_accepted().into_iter().chain(ac757_rejected()).chain(t12_accepted()) {
-        assert_eq!(is_absolute_path_buf(std::path::Path::new(&p)), is_absolute_path(&p), "{:?}", p.chars().take(40).collect::<String>());
+    for p in ac757_accepted()
+        .into_iter()
+        .chain(ac757_rejected())
+        .chain(t12_accepted())
+    {
+        assert_eq!(
+            is_absolute_path_buf(std::path::Path::new(&p)),
+            is_absolute_path(&p),
+            "{:?}",
+            p.chars().take(40).collect::<String>()
+        );
     }
 }
 
@@ -210,7 +252,10 @@ fn the_pathbuf_form_gives_the_same_answer_as_the_str_form() {
 fn a_non_utf8_pathbuf_is_not_absolute() {
     use std::os::windows::ffi::OsStringExt;
     // `C:\` + an unpaired surrogate: not valid Unicode.
-    let wide: Vec<u16> = r"C:\".encode_utf16().chain([0xD800u16, b'x' as u16]).collect();
+    let wide: Vec<u16> = r"C:\"
+        .encode_utf16()
+        .chain([0xD800u16, b'x' as u16])
+        .collect();
     let path = std::path::PathBuf::from(std::ffi::OsString::from_wide(&wide));
     assert!(path.to_str().is_none());
     assert!(!is_absolute_path_buf(&path));
@@ -234,7 +279,10 @@ fn first_relative_returns_the_first_offender_in_order() {
 #[test]
 fn first_relative_accepts_any_iterator_of_str() {
     let owned = vec![r"C:\a".to_string(), "rel".to_string()];
-    assert_eq!(first_relative(owned.iter().map(String::as_str)), Some("rel"));
+    assert_eq!(
+        first_relative(owned.iter().map(String::as_str)),
+        Some("rel")
+    );
 }
 
 // ---- why `Path::is_absolute` is NOT used (T-01 alternative (a); documentation, passes today) --------

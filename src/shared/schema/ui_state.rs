@@ -111,7 +111,14 @@ mod tests {
             sort_order: "desc".to_string(),
         };
         let s = toml::to_string_pretty(&d).expect("serialize");
-        for key in ["ui_show_hidden", "ui_show_size", "ui_show_time", "ui_show_tree", "sort_key", "sort_order"] {
+        for key in [
+            "ui_show_hidden",
+            "ui_show_size",
+            "ui_show_time",
+            "ui_show_tree",
+            "sort_key",
+            "sort_order",
+        ] {
             assert!(s.contains(key), "missing {key} in: {s}");
         }
         let back: UiStateData = toml::from_str(&s).expect("parse");

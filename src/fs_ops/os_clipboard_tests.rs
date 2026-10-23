@@ -71,9 +71,7 @@ fn test_hdrop_ansi_fallback() {
 #[cfg(windows)]
 #[test]
 fn test_os_clipboard_live_roundtrip() {
-    use super::os_clipboard::{
-        clear_os_clipboard, get_os_clipboard_files, set_os_clipboard_files,
-    };
+    use super::os_clipboard::{clear_os_clipboard, get_os_clipboard_files, set_os_clipboard_files};
 
     let test_paths = vec![
         PathBuf::from(r"C:\temp\tuif_clipboard_test_1.txt"),

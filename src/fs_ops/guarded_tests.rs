@@ -15,8 +15,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::guarded::{
-    copy_guarded, create_guarded, delete_permanently_guarded, delete_trash_guarded, detect_conflicts_guarded,
-    move_guarded, rename_guarded,
+    copy_guarded, create_guarded, delete_permanently_guarded, delete_trash_guarded,
+    detect_conflicts_guarded, move_guarded, rename_guarded,
 };
 use super::test_support::{names, tempdir, write};
 use super::transfer::{ConflictResolution, OpSummary};
@@ -29,14 +29,28 @@ const INVALID: &str = "invalid_path";
 fn rand_name() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    format!("zz-abs-path-{nanos}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed))
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!(
+        "zz-abs-path-{nanos}-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// The drive letter of the working directory (`C` ...): `X:name` / `\name` are relative to IT.
 fn cwd_drive() -> char {
-    let cwd = std::env::current_dir().expect("cwd").to_string_lossy().trim_start_matches(r"\\?\").to_string();
-    cwd.chars().next().filter(|c| c.is_ascii_alphabetic()).unwrap_or('C')
+    let cwd = std::env::current_dir()
+        .expect("cwd")
+        .to_string_lossy()
+        .trim_start_matches(r"\\?\")
+        .to_string();
+    cwd.chars()
+        .next()
+        .filter(|c| c.is_ascii_alphabetic())
+        .unwrap_or('C')
 }
 
 /// Removes the random relative names from the working directory when the test ends (also on failure),
@@ -106,7 +120,12 @@ fn world() -> World {
     write(u.path(), "d/inner.txt", "I");
     let rand = rand_name();
     let debris = Debris(vec![rand.clone()]);
-    World { u, v, rand, _debris: debris }
+    World {
+        u,
+        v,
+        rand,
+        _debris: debris,
+    }
 }
 
 impl World {
@@ -124,18 +143,29 @@ impl World {
     }
     fn assert_unchanged(&self, before: &(Vec<String>, Vec<String>), what: &str) {
         assert_eq!(&self.before(), before, "{what}: U / V changed");
-        assert!(!Path::new(&self.rand).exists(), "{what}: the random relative name appeared in the working directory");
+        assert!(
+            !Path::new(&self.rand).exists(),
+            "{what}: the random relative name appeared in the working directory"
+        );
     }
 }
 
 /// R-89-1 / T-04: every item failed with `invalid_path`, nothing counted as done.
 fn assert_refused_all(summary: &OpSummary, items: &[String], what: &str) {
     let n = items.len() as u32;
-    assert_eq!((summary.ok, summary.failed, summary.total, summary.skipped), (0, n, n, 0), "{what}: {summary:?}");
+    assert_eq!(
+        (summary.ok, summary.failed, summary.total, summary.skipped),
+        (0, n, n, 0),
+        "{what}: {summary:?}"
+    );
     assert_eq!(summary.failures.len(), items.len(), "{what}");
     for (failure, item) in summary.failures.iter().zip(items) {
         assert_eq!(failure.code, INVALID, "{what}: {failure:?}");
-        assert_eq!(failure.path, PathBuf::from(item), "{what}: the failure names the item as given");
+        assert_eq!(
+            failure.path,
+            PathBuf::from(item),
+            "{what}: the failure names the item as given"
+        );
     }
 }
 
@@ -145,7 +175,10 @@ struct Probe {
 }
 impl Probe {
     fn new() -> Self {
-        Probe { events: Cell::new(0), resolved: Cell::new(0) }
+        Probe {
+            events: Cell::new(0),
+            resolved: Cell::new(0),
+        }
     }
 }
 
@@ -187,7 +220,11 @@ fn ac83_copy_with_a_bad_items_entry_refuses_everything() {
         let probe = Probe::new();
         let summary = copy(&items, &w.dest(), &probe);
         assert_refused_all(&summary, &items, &format!("copy items {bad:?}"));
-        assert_eq!((probe.events.get(), probe.resolved.get()), (0, 0), "no progress event, no resolver call: {bad:?}");
+        assert_eq!(
+            (probe.events.get(), probe.resolved.get()),
+            (0, 0),
+            "no progress event, no resolver call: {bad:?}"
+        );
         w.assert_unchanged(&before, &format!("copy items {bad:?}"));
     }
 }
@@ -201,7 +238,11 @@ fn ac83_copy_with_a_bad_destination_refuses_every_item() {
         let probe = Probe::new();
         let summary = copy(&items, &bad, &probe);
         assert_refused_all(&summary, &items, &format!("copy destination {bad:?}"));
-        assert_eq!((probe.events.get(), probe.resolved.get()), (0, 0), "{bad:?}");
+        assert_eq!(
+            (probe.events.get(), probe.resolved.get()),
+            (0, 0),
+            "{bad:?}"
+        );
         w.assert_unchanged(&before, &format!("copy destination {bad:?}"));
     }
 }
@@ -213,13 +254,28 @@ fn ac83_move_with_a_bad_items_entry_or_destination_refuses_everything() {
     for bad in bad_forms(&w.rand) {
         let items = vec![w.a(), bad.clone()];
         let probe = Probe::new();
-        assert_refused_all(&mv(&items, &w.dest(), &probe), &items, &format!("move items {bad:?}"));
+        assert_refused_all(
+            &mv(&items, &w.dest(), &probe),
+            &items,
+            &format!("move items {bad:?}"),
+        );
         let items = vec![w.a(), w.d()];
-        assert_refused_all(&mv(&items, &bad, &probe), &items, &format!("move destination {bad:?}"));
-        assert_eq!((probe.events.get(), probe.resolved.get()), (0, 0), "{bad:?}");
+        assert_refused_all(
+            &mv(&items, &bad, &probe),
+            &items,
+            &format!("move destination {bad:?}"),
+        );
+        assert_eq!(
+            (probe.events.get(), probe.resolved.get()),
+            (0, 0),
+            "{bad:?}"
+        );
         w.assert_unchanged(&before, &format!("move {bad:?}"));
     }
-    assert!(Path::new(&w.a()).exists() && Path::new(&w.d()).exists(), "the sources are still where they were");
+    assert!(
+        Path::new(&w.a()).exists() && Path::new(&w.d()).exists(),
+        "the sources are still where they were"
+    );
 }
 
 // AC-84 / T-04: ONE bad item among valid ones -> all fail, the valid one is NOT copied / moved.
@@ -233,7 +289,10 @@ fn ac84_a_single_relative_item_fails_the_whole_batch_and_the_valid_item_is_untou
     assert_refused_all(&summary, &items, "copy");
     let summary = mv(&items, &w.dest(), &probe);
     assert_refused_all(&summary, &items, "move");
-    assert!(names(w.v.path()).is_empty(), "nothing arrived in the destination");
+    assert!(
+        names(w.v.path()).is_empty(),
+        "nothing arrived in the destination"
+    );
     w.assert_unchanged(&before, "AC-84");
 }
 
@@ -244,7 +303,10 @@ fn the_failure_message_names_the_first_refused_path() {
     let items = vec![w.a(), w.rand.clone(), "C:".to_string()];
     let summary = copy(&items, &w.dest(), &Probe::new());
     for failure in &summary.failures {
-        assert!(failure.message.contains(&w.rand), "message should contain the first relative path: {failure:?}");
+        assert!(
+            failure.message.contains(&w.rand),
+            "message should contain the first relative path: {failure:?}"
+        );
     }
 }
 
@@ -255,7 +317,10 @@ fn an_empty_items_list_gives_an_all_zero_summary() {
     let probe = Probe::new();
     for dest in [w.dest(), w.rand.clone()] {
         for summary in [copy(&[], &dest, &probe), mv(&[], &dest, &probe)] {
-            assert_eq!((summary.ok, summary.failed, summary.total, summary.skipped), (0, 0, 0, 0));
+            assert_eq!(
+                (summary.ok, summary.failed, summary.total, summary.skipped),
+                (0, 0, 0, 0)
+            );
             assert!(summary.failures.is_empty());
         }
     }
@@ -267,12 +332,23 @@ fn ac85_copy_and_move_with_absolute_paths_still_succeed() {
     let w = world();
     let probe = Probe::new();
     let summary = copy(&[w.a()], &w.dest(), &probe);
-    assert_eq!((summary.ok, summary.failed, summary.total), (1, 0, 1), "{summary:?}");
+    assert_eq!(
+        (summary.ok, summary.failed, summary.total),
+        (1, 0, 1),
+        "{summary:?}"
+    );
     assert_eq!(fs::read_to_string(w.v.path().join("a.txt")).unwrap(), "A");
-    assert!(probe.events.get() > 0, "progress events are emitted for a real batch");
+    assert!(
+        probe.events.get() > 0,
+        "progress events are emitted for a real batch"
+    );
     let w2 = world();
     let summary = mv(&[w2.a()], &w2.dest(), &Probe::new());
-    assert_eq!((summary.ok, summary.failed, summary.total), (1, 0, 1), "{summary:?}");
+    assert_eq!(
+        (summary.ok, summary.failed, summary.total),
+        (1, 0, 1),
+        "{summary:?}"
+    );
     assert!(!Path::new(&w2.a()).exists());
     assert!(w2.v.path().join("a.txt").exists());
 }
@@ -284,8 +360,16 @@ fn ac83_detect_conflicts_with_a_bad_items_entry_or_destination_is_invalid_path()
     let w = world();
     let before = w.before();
     for bad in bad_forms(&w.rand) {
-        assert_eq!(detect_conflicts_guarded(&[w.a(), bad.clone()], &w.dest()).unwrap_err(), INVALID, "items {bad:?}");
-        assert_eq!(detect_conflicts_guarded(&[w.a()], &bad).unwrap_err(), INVALID, "destination {bad:?}");
+        assert_eq!(
+            detect_conflicts_guarded(&[w.a(), bad.clone()], &w.dest()).unwrap_err(),
+            INVALID,
+            "items {bad:?}"
+        );
+        assert_eq!(
+            detect_conflicts_guarded(&[w.a()], &bad).unwrap_err(),
+            INVALID,
+            "destination {bad:?}"
+        );
     }
     w.assert_unchanged(&before, "detect_conflicts");
 }
@@ -307,7 +391,11 @@ fn ac83_delete_trash_with_a_bad_path_refuses_everything_and_deletes_nothing() {
     let before = w.before();
     for bad in bad_forms(&w.rand) {
         let paths = vec![w.a(), bad.clone()];
-        assert_refused_all(&delete_trash_guarded(&paths), &paths, &format!("trash {bad:?}"));
+        assert_refused_all(
+            &delete_trash_guarded(&paths),
+            &paths,
+            &format!("trash {bad:?}"),
+        );
     }
     w.assert_unchanged(&before, "delete_trash");
     assert!(Path::new(&w.a()).exists() && Path::new(&w.d()).exists());
@@ -319,7 +407,11 @@ fn ac83_delete_permanently_with_a_bad_path_refuses_everything_and_deletes_nothin
     let before = w.before();
     for bad in bad_forms(&w.rand) {
         let paths = vec![w.d(), bad.clone()];
-        assert_refused_all(&delete_permanently_guarded(&paths), &paths, &format!("permanent {bad:?}"));
+        assert_refused_all(
+            &delete_permanently_guarded(&paths),
+            &paths,
+            &format!("permanent {bad:?}"),
+        );
     }
     w.assert_unchanged(&before, "delete_permanently");
     assert!(Path::new(&w.a()).exists() && Path::new(&w.d()).exists());
@@ -339,7 +431,11 @@ fn ac84_delete_with_one_relative_path_among_absolute_ones_deletes_none() {
 fn ac85_delete_permanently_with_absolute_paths_still_deletes() {
     let w = world();
     let summary = delete_permanently_guarded(&[w.a()]);
-    assert_eq!((summary.ok, summary.failed, summary.total), (1, 0, 1), "{summary:?}");
+    assert_eq!(
+        (summary.ok, summary.failed, summary.total),
+        (1, 0, 1),
+        "{summary:?}"
+    );
     assert!(!Path::new(&w.a()).exists());
 }
 
@@ -362,11 +458,22 @@ fn ac83_create_with_a_bad_parent_is_invalid_path_and_creates_nothing() {
     let name = rand_name();
     let _debris = Debris(vec![name.clone()]);
     for bad in bad_forms(&w.rand) {
-        assert_eq!(create_guarded(&bad, &name, "file").unwrap_err(), INVALID, "{bad:?} file");
-        assert_eq!(create_guarded(&bad, &name, "folder").unwrap_err(), INVALID, "{bad:?} folder");
+        assert_eq!(
+            create_guarded(&bad, &name, "file").unwrap_err(),
+            INVALID,
+            "{bad:?} file"
+        );
+        assert_eq!(
+            create_guarded(&bad, &name, "folder").unwrap_err(),
+            INVALID,
+            "{bad:?} folder"
+        );
     }
     w.assert_unchanged(&before, "create");
-    assert!(!Path::new(&name).exists(), "no entry named {name} appeared in the working directory");
+    assert!(
+        !Path::new(&name).exists(),
+        "no entry named {name} appeared in the working directory"
+    );
 }
 
 // AC-85: absolute arguments work as before; a bad NAME is still `invalid_name` (names are out of scope, R-89-5).
@@ -384,7 +491,10 @@ fn ac85_create_and_rename_with_absolute_paths_still_succeed() {
 fn ac85_a_parent_dir_name_is_still_invalid_name_not_invalid_path() {
     let w = world();
     let before = w.before();
-    assert_eq!(create_guarded(&s(w.u.path()), r"..\x", "file").unwrap_err(), "invalid_name");
+    assert_eq!(
+        create_guarded(&s(w.u.path()), r"..\x", "file").unwrap_err(),
+        "invalid_name"
+    );
     assert_eq!(rename_guarded(&w.a(), r"..\y").unwrap_err(), "invalid_name");
     w.assert_unchanged(&before, "invalid names");
 }
@@ -405,10 +515,26 @@ fn ac88_with_a_scope_active_relative_paths_are_still_invalid_path() {
     let probe = Probe::new();
 
     for summary_items in [vec![rel.clone()], vec![w.a(), rel.clone()]] {
-        assert_refused_all(&copy(&summary_items, &w.dest(), &probe), &summary_items, "copy items");
-        assert_refused_all(&mv(&summary_items, &w.dest(), &probe), &summary_items, "move items");
-        assert_refused_all(&delete_trash_guarded(&summary_items), &summary_items, "trash");
-        assert_refused_all(&delete_permanently_guarded(&summary_items), &summary_items, "permanent");
+        assert_refused_all(
+            &copy(&summary_items, &w.dest(), &probe),
+            &summary_items,
+            "copy items",
+        );
+        assert_refused_all(
+            &mv(&summary_items, &w.dest(), &probe),
+            &summary_items,
+            "move items",
+        );
+        assert_refused_all(
+            &delete_trash_guarded(&summary_items),
+            &summary_items,
+            "trash",
+        );
+        assert_refused_all(
+            &delete_permanently_guarded(&summary_items),
+            &summary_items,
+            "permanent",
+        );
     }
     let items = vec![w.a()];
     assert_refused_all(&copy(&items, &rel, &probe), &items, "copy destination");
@@ -426,7 +552,11 @@ fn ac88_control_an_absolute_path_outside_the_scope_is_an_e2e_scope_violation() {
     let _scope = with_scope_on(&w);
     let items = vec![w.a()]; // U is outside the scope V (as a read source)
     let summary = copy(&items, &w.dest(), &Probe::new());
-    assert_eq!((summary.ok, summary.failed, summary.total), (0, 1, 1), "{summary:?}");
+    assert_eq!(
+        (summary.ok, summary.failed, summary.total),
+        (0, 1, 1),
+        "{summary:?}"
+    );
     assert_eq!(summary.failures[0].code, VIOLATION_CODE);
     let summary = delete_permanently_guarded(&items);
     assert_eq!(summary.failures[0].code, VIOLATION_CODE);

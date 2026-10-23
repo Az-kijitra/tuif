@@ -33,7 +33,10 @@ impl CancelRegistry {
     /// Removes `operation_id`'s entry once its operation has ended, so a cancel
     /// against a stale id is a harmless no-op rather than a leaked flag.
     pub fn unregister(&self, operation_id: &str) {
-        self.0.lock().expect("cancel registry mutex poisoned").remove(operation_id);
+        self.0
+            .lock()
+            .expect("cancel registry mutex poisoned")
+            .remove(operation_id);
     }
 
     /// R-43-2 / R-387-2 (MUST-58): raises the flag for `operation_id`. For an
@@ -61,7 +64,11 @@ pub struct CancelGuard<'a> {
 impl<'a> CancelGuard<'a> {
     pub fn new(registry: &'a CancelRegistry, operation_id: &str) -> Self {
         let flag = registry.register(operation_id);
-        CancelGuard { registry, operation_id: operation_id.to_string(), flag }
+        CancelGuard {
+            registry,
+            operation_id: operation_id.to_string(),
+            flag,
+        }
     }
 
     /// The operation's cancellation flag.

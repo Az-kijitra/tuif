@@ -46,7 +46,10 @@ fn multiple_drives_are_returned_in_ascending_order() {
 #[test]
 fn ac730_c_and_d_present_only() {
     let mask = (1u32 << 2) | (1u32 << 3); // C, D
-    assert_eq!(bitmask_to_drive_roots(mask), vec!["C:\\".to_string(), "D:\\".to_string()]);
+    assert_eq!(
+        bitmask_to_drive_roots(mask),
+        vec!["C:\\".to_string(), "D:\\".to_string()]
+    );
 }
 
 // SHOULD-139(e): bits 26-31 (beyond 'Z') do not exist for GetLogicalDrives,

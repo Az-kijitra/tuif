@@ -79,20 +79,31 @@ fn non_unicode_is_an_error_even_when_it_looks_absolute_and_nothing_is_created() 
     let raw = non_unicode_under(tmp.path());
     assert!(raw.to_str().is_none(), "fixture must be non-Unicode");
     assert!(resolve_config_dir_override(Some(raw.as_os_str())).is_err());
-    assert!(dir_is_empty(tmp.path()), "a rejected value must not create anything");
+    assert!(
+        dir_is_empty(tmp.path()),
+        "a rejected value must not create anything"
+    );
 }
 
 #[test]
 fn relative_paths_are_rejected_and_not_created_in_the_current_directory() {
     let marker = "reflexfiles_rel_override_must_not_exist";
-    let cases = [marker.to_string(), format!("{marker}/sub"), format!("./{marker}"), ".".to_string()];
+    let cases = [
+        marker.to_string(),
+        format!("{marker}/sub"),
+        format!("./{marker}"),
+        ".".to_string(),
+    ];
     for raw in cases {
         assert!(
             resolve_config_dir_override(Some(OsStr::new(&raw))).is_err(),
             "{raw:?} is relative and must be rejected"
         );
     }
-    assert!(!Path::new(marker).exists(), "relative value created a directory in the CWD");
+    assert!(
+        !Path::new(marker).exists(),
+        "relative value created a directory in the CWD"
+    );
 }
 
 #[cfg(windows)]
@@ -100,8 +111,14 @@ fn relative_paths_are_rejected_and_not_created_in_the_current_directory() {
 fn windows_drive_relative_and_rooted_without_drive_are_rejected() {
     // `C:config` (relative to the drive's current directory) and `\config`
     // (rooted, no drive) are not absolute paths.
-    for raw in ["C:reflexfiles_rel_override_must_not_exist", "\\reflexfiles_rel_override_must_not_exist"] {
-        assert!(resolve_config_dir_override(Some(OsStr::new(raw))).is_err(), "{raw:?}");
+    for raw in [
+        "C:reflexfiles_rel_override_must_not_exist",
+        "\\reflexfiles_rel_override_must_not_exist",
+    ] {
+        assert!(
+            resolve_config_dir_override(Some(OsStr::new(raw))).is_err(),
+            "{raw:?}"
+        );
     }
 }
 
@@ -112,7 +129,10 @@ fn parent_directory_components_are_rejected_and_nothing_is_created() {
     assert!(resolve(&with_dotdot).is_err());
     let trailing = tmp.path().join("..");
     assert!(resolve(&trailing).is_err());
-    assert!(dir_is_empty(tmp.path()), "validation must happen before any directory is created");
+    assert!(
+        dir_is_empty(tmp.path()),
+        "validation must happen before any directory is created"
+    );
 }
 
 #[test]
@@ -121,7 +141,11 @@ fn a_path_that_points_to_an_existing_file_is_rejected() {
     let file = tmp.path().join("not-a-dir.txt");
     fs::write(&file, b"keep me").unwrap();
     assert!(resolve(&file).is_err());
-    assert_eq!(fs::read(&file).unwrap(), b"keep me", "the file must be left untouched");
+    assert_eq!(
+        fs::read(&file).unwrap(),
+        b"keep me",
+        "the file must be left untouched"
+    );
 }
 
 #[test]
@@ -179,7 +203,10 @@ fn a_verbatim_prefix_path_is_allowed_not_special_cased() {
 fn notice_line_is_exactly_one_line_with_the_documented_prefix() {
     let tmp = tempdir().unwrap();
     let line = override_notice_line(tmp.path());
-    assert_eq!(line, format!("[config] override dir: {}", tmp.path().display()));
+    assert_eq!(
+        line,
+        format!("[config] override dir: {}", tmp.path().display())
+    );
     assert!(!line.contains('\n'));
 }
 
@@ -211,7 +238,10 @@ fn ungated_eprintln_lines(src: &str) -> Vec<String> {
             }
         }
         if !lines[start..=i].join("\n").contains("debug_assertions") {
-            bad.push(format!("line {}: eprintln! not gated by debug_assertions", i + 1));
+            bad.push(format!(
+                "line {}: eprintln! not gated by debug_assertions",
+                i + 1
+            ));
         }
     }
     bad
@@ -220,7 +250,8 @@ fn ungated_eprintln_lines(src: &str) -> Vec<String> {
 #[test]
 fn gating_checker_self_check() {
     let gated = "#[cfg(debug_assertions)]\nfn a() {\n    eprintln!(\"x\");\n}\n";
-    let gated_inline = "fn b() {\n    if cfg!(debug_assertions) {\n        eprintln!(\"x\");\n    }\n}\n";
+    let gated_inline =
+        "fn b() {\n    if cfg!(debug_assertions) {\n        eprintln!(\"x\");\n    }\n}\n";
     let ungated = "fn c() {\n    eprintln!(\"x\");\n}\n";
     assert!(ungated_eprintln_lines(gated).is_empty());
     assert!(ungated_eprintln_lines(gated_inline).is_empty());
@@ -239,15 +270,27 @@ fn the_stderr_notice_exists_and_is_debug_only() {
 // ----------------------------------- source rules (MUST-108 / SHOULD-155)
 
 fn code_only(src: &str) -> String {
-    src.lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n")
+    src.lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
 fn the_variable_is_read_with_var_os_never_with_the_lossy_var() {
     let code = code_only(PATHS_SRC);
-    assert!(code.contains("REFLEXFILES_CONFIG_DIR"), "the variable name must be defined in paths.rs");
-    assert!(code.contains("var_os"), "MUST-108: use std::env::var_os (non-Unicode must not become 'unset')");
-    assert!(!code.contains("env::var("), "MUST-108: std::env::var(..) hides non-Unicode values");
+    assert!(
+        code.contains("REFLEXFILES_CONFIG_DIR"),
+        "the variable name must be defined in paths.rs"
+    );
+    assert!(
+        code.contains("var_os"),
+        "MUST-108: use std::env::var_os (non-Unicode must not become 'unset')"
+    );
+    assert!(
+        !code.contains("env::var("),
+        "MUST-108: std::env::var(..) hides non-Unicode values"
+    );
 }
 
 #[test]
@@ -276,6 +319,9 @@ fn the_validation_function_is_not_gated_by_debug_assertions() {
 #[test]
 fn tests_and_paths_never_mutate_the_process_environment() {
     let needle = ["set", "_var"].concat();
-    assert!(!THIS_SRC.contains(&needle), "SHOULD-155: pass raw values to the pure function");
+    assert!(
+        !THIS_SRC.contains(&needle),
+        "SHOULD-155: pass raw values to the pure function"
+    );
     assert!(!PATHS_SRC.contains(&needle));
 }

@@ -1,4 +1,4 @@
-//! `cuifiler` library root (SPEC-0200-0001, SPEC-0300-0001).
+//! `tuif` library root (SPEC-0200-0001, SPEC-0300-0001).
 
 #![deny(unsafe_code)]
 

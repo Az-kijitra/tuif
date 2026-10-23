@@ -1,4 +1,4 @@
-//! Application state and Vim-like controller for `cuifiler` (SPEC-0300-0001).
+//! Application state and Vim-like controller for `tuif` (SPEC-0300-0001).
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

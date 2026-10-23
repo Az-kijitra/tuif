@@ -1,4 +1,4 @@
-//! Cross-feature shared parts for `cuifiler` (SPEC-0200-0001).
+//! Cross-feature shared parts for `tuif` (SPEC-0200-0001).
 
 pub mod abs_path;
 pub mod cancel;

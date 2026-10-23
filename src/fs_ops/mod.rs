@@ -1,4 +1,4 @@
-//! `fs_ops/` — copy / move / delete / rename / create logic for `cuifiler`.
+//! `fs_ops/` — copy / move / delete / rename / create logic for `tuif`.
 
 pub mod create;
 pub mod delete;

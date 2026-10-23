@@ -39,6 +39,6 @@ Antigravity では以下の2つの方法でこのパイプラインを運用し�
 ## 3. 共有状態 (Source of Truth)
 - `specs/_registry.md` : 確定した仕様の Spec ID 台帳
 - `specs/_issues.md` : 重複・矛盾・未決定 (TBD) の管理台帳
-- `docs/architecture/traceability.md` : 仕様ID ⇔ モジュール ⇔ 単体テスト ⇔ テストケースの対応表
-- `tests/cases/_index.md` : テストケース一覧と Spec ID カバレッジ
-- `tests/results/ledger.md` : テスト結果 (`PASS`/`FAIL`/`NOT_RUN`) と証跡
+- `docs/architecture/traceability.md` : 仕様ID ⇔ 実装モジュール ⇔ テストスイートの対応表
+- `tests/` : 結合テストコード (`*.rs`)
+- `cargo test` / CI : テスト実行と合否判定 (`.github/workflows/ci.yml`)

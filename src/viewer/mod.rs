@@ -1,4 +1,4 @@
-//! `viewer/` — Text/Markdown classification, reading, and sibling navigation for `cuifiler`.
+//! `viewer/` — Text/Markdown classification, reading, and sibling navigation for `tuif`.
 
 pub mod classify;
 pub mod error;

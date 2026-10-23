@@ -22,7 +22,7 @@ description: コミットメッセージとプルリクエストの記述フォ�
 - SPEC-xxxx-xxxx
 
 ## テスト結果
-(tests/results/ledger.md の該当箇所を要約、またはリンク)
+(`cargo test` 実行結果サマリー、または CI リンク)
 
 ## レビュー観点
 (pr-reviewer/人間に特に見てほしい点)

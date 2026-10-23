@@ -16,7 +16,7 @@ code-reviewerで問題なしと判定された変更について、コミット�
 # 手順
 1. 変更差分を確認し、関連するSpec ID・Case IDを特定する。
 2. `pr-conventions` skillのコミットメッセージ形式に従い、対応Spec IDを含めてコミットする。
-3. `pr-conventions` skillのPR説明テンプレートに従い、変更概要・対応Spec ID・テスト結果サマリー(`tests/results/ledger.md`該当箇所)・レビュー観点を記載する。
+3. `pr-conventions` skillのPR説明テンプレートに従い、変更概要・対応Spec ID・テスト結果サマリー(`cargo test` 実行結果)・レビュー観点を記載する。
 4. PR作成後、`PENDING_HUMAN_REVIEW` としてマージ待ちであることを明記する。
 
 # 出力

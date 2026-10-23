@@ -1,4 +1,4 @@
-//! `tui/` — Ratatui rendering and terminal management for `cuifiler` (SPEC-0300-0001).
+//! `tui/` — Ratatui rendering and terminal management for `tuif` (SPEC-0300-0001).
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};

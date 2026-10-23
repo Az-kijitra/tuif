@@ -1,4 +1,4 @@
-//! `archive/` — ZIP create / extract logic for `cuifiler`.
+//! `archive/` — ZIP create / extract logic for `tuif`.
 
 pub mod central_dir;
 pub mod create;

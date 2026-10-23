@@ -8,7 +8,7 @@ model: sonnet
 > **動作確認用:** 出力の冒頭に必ず `[Agent: test-automation-engineer]` と明記すること。
 
 # 役割(Creator)
-`tests/cases/_index.md` でAUTO区分のテストケースを、実行可能な自動テストコードに変換し、実行する。
+仕様を満たす自動テストコード（単体テストまたは結合テスト）を作成し、`cargo test` で実行する。
 
 # 手順
 1. 対象Case IDの手順・期待結果を自動テストコードに落とし込む。

@@ -307,7 +307,7 @@ Windows OS の仕組み上、実行中の子プロセス（`.exe`）が親プロ
 PowerShell のプロファイルファイル（`$PROFILE`）に以下の関数とエイリアスを追記します。
 
 ```powershell
-# tuif (cuifiler): cd on exit ラッパー関数
+# tuif: cd on exit ラッパー関数
 function Invoke-Tuif {
     $tmp = [System.IO.Path]::GetTempFileName()
     try {

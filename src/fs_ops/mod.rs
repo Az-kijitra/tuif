@@ -5,6 +5,7 @@ pub mod delete;
 pub mod error;
 pub mod guarded;
 pub mod name_validation;
+pub mod os_clipboard;
 pub mod preflight;
 pub mod rename;
 pub mod transfer;
@@ -19,3 +20,5 @@ mod overwrite_merge_tests;
 mod data_safety_tests;
 #[cfg(test)]
 mod guarded_tests;
+#[cfg(test)]
+mod os_clipboard_tests;

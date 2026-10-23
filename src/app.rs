@@ -1487,6 +1487,19 @@ impl AppState {
                 let targets = self.operation_targets_clipboard();
                 if !targets.is_empty() {
                     let count = targets.len();
+                    let local_paths: Vec<PathBuf> = targets
+                        .iter()
+                        .filter_map(|t| match t {
+                            ClipboardItem::Local(p) => Some(p.clone()),
+                            ClipboardItem::Remote { .. } => None,
+                        })
+                        .collect();
+                    if !local_paths.is_empty() {
+                        crate::fs_ops::os_clipboard::set_os_clipboard_files(
+                            &local_paths,
+                            crate::fs_ops::os_clipboard::ClipboardEffect::Copy,
+                        );
+                    }
                     self.clipboard = Some(FileClipboard {
                         mode: ClipMode::Copy,
                         items: targets,
@@ -1498,6 +1511,19 @@ impl AppState {
                 let targets = self.operation_targets_clipboard();
                 if !targets.is_empty() {
                     let count = targets.len();
+                    let local_paths: Vec<PathBuf> = targets
+                        .iter()
+                        .filter_map(|t| match t {
+                            ClipboardItem::Local(p) => Some(p.clone()),
+                            ClipboardItem::Remote { .. } => None,
+                        })
+                        .collect();
+                    if !local_paths.is_empty() {
+                        crate::fs_ops::os_clipboard::set_os_clipboard_files(
+                            &local_paths,
+                            crate::fs_ops::os_clipboard::ClipboardEffect::Move,
+                        );
+                    }
                     self.clipboard = Some(FileClipboard {
                         mode: ClipMode::Cut,
                         items: targets,
@@ -1506,7 +1532,23 @@ impl AppState {
                 }
             }
             ActionId::Paste => {
-                let Some(clip) = self.clipboard.clone() else {
+                let os_clip = crate::fs_ops::os_clipboard::get_os_clipboard_files();
+                let clip_to_paste = if let Some(os_payload) = os_clip {
+                    let mode = match os_payload.effect {
+                        crate::fs_ops::os_clipboard::ClipboardEffect::Copy => ClipMode::Copy,
+                        crate::fs_ops::os_clipboard::ClipboardEffect::Move => ClipMode::Cut,
+                    };
+                    let items = os_payload
+                        .paths
+                        .into_iter()
+                        .map(ClipboardItem::Local)
+                        .collect();
+                    Some(FileClipboard { mode, items })
+                } else {
+                    self.clipboard.clone()
+                };
+
+                let Some(clip) = clip_to_paste else {
                     self.status_message = "Clipboard is empty".to_string();
                     return;
                 };
@@ -1796,6 +1838,7 @@ impl AppState {
             }
             if is_cut && !cancelled && failed == 0 {
                 self.clipboard = None;
+                crate::fs_ops::os_clipboard::clear_os_clipboard();
             }
             self.reload_dir();
         }

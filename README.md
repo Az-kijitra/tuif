@@ -9,19 +9,34 @@
 
 ---
 
-## クイックインストール (推奨)
+## インストール
 
-PowerShell を開き、以下の **1行を実行するだけ** でセットアップが完了します。  
-`tuif.exe` の配置、ユーザー環境変数 PATH の設定、PowerShell `$PROFILE` への `tf` (`cd on exit`) コマンド登録をすべて全自動で行います。
+### 方法 1: リリース ZIP をダウンロード（推奨）
+[Releases](https://github.com/Az-kijitra/tuif/releases) から最新の `tuif-v*-windows-x86_64.zip` をダウンロードして解凍し、中にある `install.ps1` を実行するだけです（右クリックして「PowerShell で実行」またはターミナルで `.\install.ps1`）。
+
+### 方法 2: PowerShell ワンライナーで自動インストール
+PowerShell を開き、以下の **1行を実行するだけ** で最新版のダウンロードとセットアップが完了します。
 
 ```powershell
 irm https://raw.githubusercontent.com/Az-kijitra/tuif/master/install.ps1 | iex
 ```
 
+※ インストーラーは、`%LOCALAPPDATA%\Programs\tuif` へのバイナリ配置、ユーザー環境変数 PATH への追加、PowerShell `$PROFILE` への `tf` (`cd on exit`) エイリアス登録、初期設定ファイル生成を全自動で行います。
+
 インストール完了後、ターミナルで `tf` または `tuif` と入力すればすぐに起動できます。
 
 <details>
-<summary>ソースから手動でビルド・インストールする場合</summary>
+<summary>アンインストール方法</summary>
+
+PowerShell で以下を実行するだけで、PATH や `$PROFILE` の登録を含め綺麗に削除されます：
+```powershell
+& "$env:LOCALAPPDATA\Programs\tuif\uninstall.ps1"
+```
+（ZIP をお持ちの場合は、解凍フォルダ内の `uninstall.ps1` を実行しても同様です）
+</details>
+
+<details>
+<summary>ソースコードからビルドする場合</summary>
 
 ### 必要要件
 - Windows 10 / 11

@@ -29,14 +29,18 @@ if (-not (Test-Path $InstallDir)) {
 $TargetExe = Join-Path $InstallDir "tuif.exe"
 
 # 2. Copy local release binary if present, or download from GitHub Releases
-$LocalReleaseExe = ""
+$LocalExe = ""
 if ($PSScriptRoot) {
-    $LocalReleaseExe = Join-Path $PSScriptRoot "target\release\tuif.exe"
+    if (Test-Path (Join-Path $PSScriptRoot "tuif.exe")) {
+        $LocalExe = Join-Path $PSScriptRoot "tuif.exe"
+    } elseif (Test-Path (Join-Path $PSScriptRoot "target\release\tuif.exe")) {
+        $LocalExe = Join-Path $PSScriptRoot "target\release\tuif.exe"
+    }
 }
 
-if ($LocalReleaseExe -and (Test-Path $LocalReleaseExe)) {
-    Write-Host "[1/4] Copying local binary from $LocalReleaseExe..." -ForegroundColor Green
-    Copy-Item -Path $LocalReleaseExe -Destination $TargetExe -Force
+if ($LocalExe -and (Test-Path $LocalExe)) {
+    Write-Host "[1/4] Copying local binary from $LocalExe..." -ForegroundColor Green
+    Copy-Item -Path $LocalExe -Destination $TargetExe -Force
 } else {
     Write-Host "[1/4] Downloading latest tuif.exe from GitHub Releases..." -ForegroundColor Green
     $DownloadUrl = "https://github.com/Az-kijitra/tuif/releases/latest/download/tuif.exe"
@@ -47,6 +51,12 @@ if ($LocalReleaseExe -and (Test-Path $LocalReleaseExe)) {
         Write-Error "Failed to download tuif.exe from $DownloadUrl. Error: $_"
         return
     }
+}
+
+# Also copy uninstall.ps1 to install directory if available locally
+$LocalUninstall = if ($PSScriptRoot) { Join-Path $PSScriptRoot "uninstall.ps1" } else { "" }
+if ($LocalUninstall -and (Test-Path $LocalUninstall)) {
+    Copy-Item -Path $LocalUninstall -Destination (Join-Path $InstallDir "uninstall.ps1") -Force
 }
 
 if (-not (Test-Path $TargetExe)) {

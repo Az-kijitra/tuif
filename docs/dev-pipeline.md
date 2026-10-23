@@ -25,6 +25,6 @@
 - `specs/_drafts/` : 要件抽出直後のドラフト(未確定)
 - `specs/_registry.md` : 確定した仕様のSpec ID台帳(階層構造)
 - `specs/_issues.md` : 重複・矛盾・未決定(TBD)の管理台帳
-- `docs/architecture/traceability.md` : 仕様ID ⇔ アーキ構成要素 ⇔ コード ⇔ テストケースの対応表
-- `tests/cases/_index.md` : ユースケース/テストケース一覧とSpec IDカバレッジ
-- `tests/results/ledger.md` : テスト結果(PASS/FAIL/NOT_RUN)と証跡へのリンク
+- `docs/architecture/traceability.md` : 仕様ID ⇔ 実装モジュール ⇔ テストスイートの対応表
+- `tests/` : 結合テストコード (`tui_workflow_tests.rs`, `os_clipboard_integration_tests.rs`)
+- `cargo test` / CI (`.github/workflows/ci.yml`) : 自動テスト実行と合否判定

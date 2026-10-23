@@ -70,9 +70,20 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 
 > **セキュリティについて**: SFTP のログインパスワードを保存する場合、平文の設定ファイルには一切書き込まれず、Windows OS 標準の **Windows 資格情報マネージャー** (`Windows Credential Manager`) 内に暗号化保管されます。
 
-### 2.1 %APPDATA% の確認・アクセス方法
+### 2.1 設定ファイル・フォルダへの素早いアクセス
 
-`%APPDATA%` は Windows における各ユーザーのアプリケーション設定保存先フォルダ（`AppData\Roaming`）を指す環境変数です。以下のいずれかの方法で簡単に確認および開くことができます。
+`tuif` には設定ファイルやフォルダを一瞬で開くためのコマンドラインオプションが用意されています。深い階層の `AppData` を手動で探す必要はありません：
+
+```powershell
+# 設定ファイル (config.toml) を既定のテキストエディタで直接開く (未作成時は初期テンプレートを自動生成)
+tuif --config
+
+# 設定フォルダ (%APPDATA%\tuif) をエクスプローラーで直接開く
+tuif --config-dir
+```
+
+#### 手動で確認・アクセスする場合
+`%APPDATA%` は Windows における各ユーザーのアプリケーション設定保存先フォルダ（`AppData\Roaming`）を指す環境変数です。以下のいずれかの方法でも確認・アクセスできます：
 
 1. **PowerShell でパスを確認する**:
    ```powershell
@@ -82,10 +93,6 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 2. **PowerShell から tuif 設定フォルダをエクスプローラーで直接開く**:
    ```powershell
    explorer "$env:APPDATA\tuif"
-   ```
-   ※ 初回起動前などでフォルダがまだ作成されていない場合は、以下のコマンドで作成して開くことができます。
-   ```powershell
-   New-Item -ItemType Directory -Path "$env:APPDATA\tuif" -Force; explorer "$env:APPDATA\tuif"
    ```
 3. **「ファイル名を指定して実行」で開く**:
    - キーボードの `Win + R` キーを押して実行ダイアログを開きます。

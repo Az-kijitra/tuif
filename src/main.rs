@@ -24,6 +24,8 @@ struct CliArgs {
     choosedir_file: Option<PathBuf>,
     show_help: bool,
     show_version: bool,
+    open_config: bool,
+    open_config_dir: bool,
 }
 
 fn parse_args() -> CliArgs {
@@ -31,12 +33,16 @@ fn parse_args() -> CliArgs {
     let mut choosedir_file = None;
     let mut show_help = false;
     let mut show_version = false;
+    let mut open_config = false;
+    let mut open_config_dir = false;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-h" | "--help" => show_help = true,
             "-V" | "--version" => show_version = true,
+            "-c" | "--config" => open_config = true,
+            "--config-dir" => open_config_dir = true,
             "--choosedir" | "--cwd-file" => {
                 if let Some(p) = args.next() {
                     choosedir_file = Some(PathBuf::from(p));
@@ -57,6 +63,8 @@ fn parse_args() -> CliArgs {
         choosedir_file,
         show_help,
         show_version,
+        open_config,
+        open_config_dir,
     }
 }
 
@@ -80,9 +88,85 @@ fn main() -> io::Result<()> {
         println!("Usage: tuif [OPTIONS] [START_DIR]");
         println!();
         println!("Options:");
+        println!("  -c, --config         Open config.toml in default text editor");
+        println!("  --config-dir         Open configuration directory in File Explorer");
         println!("  --choosedir <FILE>   Write the last visited directory to <FILE> on exit");
         println!("  -h, --help           Print help");
         println!("  -V, --version        Print version");
+        return Ok(());
+    }
+
+    if cli.open_config_dir {
+        let dir = tuif::config::paths::app_config_dir()?;
+        println!("Configuration directory: {}", dir.display());
+        #[cfg(windows)]
+        {
+            let _ = std::process::Command::new("explorer.exe").arg(&dir).spawn();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+        }
+        return Ok(());
+    }
+
+    if cli.open_config {
+        let cfg_path = tuif::config::paths::config_path()?;
+        if !cfg_path.exists() {
+            let template = r#"# tuif configuration file (%APPDATA%\tuif\config.toml)
+
+# UI Theme: "default", "nord", "monokai", "catppuccin", "solarized_dark", "light"
+theme = "default"
+
+[general]
+confirm_delete = true
+
+[layout]
+show_tree = true
+show_hidden = false
+show_size = true
+show_time = true
+
+[input_keymap_custom]
+# Example:
+# open = "Enter"
+# copy = "y,Ctrl+C"
+"#;
+            let _ = fs::write(&cfg_path, template);
+        }
+        println!("Opening config file: {}", cfg_path.display());
+        if let Ok(editor) = env::var("EDITOR") {
+            if !editor.trim().is_empty() {
+                let mut parts = editor.split_whitespace();
+                if let Some(cmd) = parts.next() {
+                    let mut c = std::process::Command::new(cmd);
+                    for p in parts {
+                        c.arg(p);
+                    }
+                    c.arg(&cfg_path);
+                    if c.status().is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        #[cfg(windows)]
+        {
+            let status = std::process::Command::new("cmd")
+                .args(["/C", "start", "", &cfg_path.to_string_lossy()])
+                .status();
+            if status.is_err() || !status.as_ref().map(|s| s.success()).unwrap_or(false) {
+                let _ = std::process::Command::new("notepad.exe")
+                    .arg(&cfg_path)
+                    .status();
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&cfg_path)
+                .status();
+        }
         return Ok(());
     }
 

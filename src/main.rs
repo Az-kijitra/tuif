@@ -113,7 +113,10 @@ fn main() -> io::Result<()> {
     if cli.open_config {
         let cfg_path = tuif::config::paths::config_path()?;
         if !cfg_path.exists() {
-            let template = r#"# tuif configuration file (%APPDATA%\tuif\config.toml)
+            let template = r#"# ==============================================================================
+# tuif configuration file (%APPDATA%\tuif\config.toml)
+# Documentation: https://github.com/Az-kijitra/tuif/blob/master/docs/user_manual.md
+# ==============================================================================
 
 # UI Theme: "default", "nord", "monokai", "catppuccin", "solarized_dark", "light"
 theme = "default"
@@ -127,10 +130,23 @@ show_hidden = false
 show_size = true
 show_time = true
 
+# Custom keybindings
 [input_keymap_custom]
 # Example:
 # open = "Enter"
-# copy = "y,Ctrl+C"
+# copy = "y, Ctrl+C"
+
+# ------------------------------------------------------------------------------
+# External Applications ([[external_apps]])
+# Placeholders: {path} = selected item full path, {dir} = current folder path
+# is_gui: true = launch in background, false = suspend TUI and run in foreground
+# ------------------------------------------------------------------------------
+# [[external_apps]]
+# name = "Run Python Script"
+# program = "python.exe"
+# args = ["C:\\path\\to\\script.py", "{path}"]
+# key_chord = "Ctrl+Alt+P"
+# is_gui = false
 "#;
             let _ = fs::write(&cfg_path, template);
         }

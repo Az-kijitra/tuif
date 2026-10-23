@@ -1,6 +1,6 @@
 # tuif
 
-[![CI](https://github.com/tosh/tuif/actions/workflows/ci.yml/badge.svg)](https://github.com/tosh/tuif/actions/workflows/ci.yml)
+[![CI](https://github.com/Az-kijitra/tuif/actions/workflows/ci.yml/badge.svg)](https://github.com/Az-kijitra/tuif/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 `tuif` は、Windows PowerShell 環境で軽快に動作する **Rust + Ratatui** 製のキーボード主体 (Vim-like) CUI/TUI ファイラーです。
@@ -37,7 +37,7 @@
 ### ビルド・インストール
 ```powershell
 # クローンしてリリースビルド
-git clone https://github.com/tosh/tuif.git
+git clone https://github.com/Az-kijitra/tuif.git
 cd tuif
 cargo build --release
 

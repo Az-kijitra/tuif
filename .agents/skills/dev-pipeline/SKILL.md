@@ -5,7 +5,7 @@ description: Creator-Evaluator構成の9ステージ開発パイプライン手�
 
 # Creator-Evaluator 開発パイプライン Skill (Antigravity 版)
 
-このスキルは、`C:\Users\toshi\git\project` の `.claude/agents/` で運用されていた19種の Creator / Evaluator サブエージェントによる開発パイプラインを、Antigravity 環境で実行するための手順書です。
+このスキルは、19種の Creator / Evaluator サブエージェントによる開発パイプラインを、Antigravity 環境で実行するための手順書です。
 
 ## 1. ステージ構成とロール一覧
 

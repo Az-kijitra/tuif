@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Keyboard-driven CUI/TUI file manager for Windows PowerShell, built with Rust and Ratatui."
 license = "MIT"
+repository = "https://github.com/Az-kijitra/tuif"
 readme = "README.md"
 keywords = ["tui", "cli", "file-manager", "windows", "powershell"]
 categories = ["command-line-utilities"]

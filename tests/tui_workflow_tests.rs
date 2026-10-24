@@ -581,3 +581,39 @@ fn viewer_search_and_navigation_workflow() {
     app.handle_key_event(key(KeyCode::Esc));
     assert_eq!(app.overlay, OverlayMode::None);
 }
+
+#[test]
+fn large_markdown_file_open_in_viewer_does_not_hang() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+
+    // Create a 300 KB markdown file (exceeding standard 64 KB OS pipe buffers)
+    let md_path = root.join("large_spec_document.md");
+    let content = "# Title\n\n- Bullet point explaining spec-driven development.\n```rust\nfn code() {}\n```\n".repeat(4000);
+    std::fs::write(&md_path, &content).unwrap();
+
+    let mut app = AppState::new(root.to_path_buf());
+    // Move cursor to the markdown file and press Enter
+    app.handle_key_event(key(KeyCode::Enter));
+
+    match app.overlay {
+        OverlayMode::Viewer {
+            ref title,
+            is_markdown,
+            ..
+        } => {
+            assert!(is_markdown);
+            assert_eq!(title, "large_spec_document.md");
+        }
+        _ => panic!("Expected OverlayMode::Viewer, got {:?}", app.overlay),
+    }
+
+    // Ensure rendering completes smoothly
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|f| tui::draw(f, &app)).unwrap();
+
+    // Close viewer with Esc
+    app.handle_key_event(key(KeyCode::Esc));
+    assert_eq!(app.overlay, OverlayMode::None);
+}

@@ -22,34 +22,49 @@ pub fn highlight_with_bat(path: &Path, decoded_content: &str) -> Vec<String> {
         .collect()
 }
 
+/// Runs a command with piped stdin and stdout concurrently to prevent OS pipe deadlocks.
+///
+/// If input data exceeds the OS pipe buffer (typically 4 KB–64 KB), a synchronous
+/// write to stdin blocks while the child process blocks writing to a full stdout buffer.
+/// Spawning a thread to feed stdin allows `wait_with_output` to concurrently drain stdout.
+fn run_filter_command(cmd: &mut Command, input: &[u8]) -> Option<Vec<u8>> {
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+
+    let mut child = cmd.spawn().ok()?;
+    let mut stdin = child.stdin.take()?;
+
+    std::thread::scope(|s| {
+        s.spawn(move || {
+            let _ = stdin.write_all(input);
+            drop(stdin);
+        });
+
+        let output = child.wait_with_output().ok()?;
+        if output.status.success() {
+            Some(output.stdout)
+        } else {
+            None
+        }
+    })
+}
+
 fn try_run_bat(path: &Path, decoded_content: &str) -> Option<Vec<String>> {
     let bat_exe = resolve_executable("bat.exe")?;
     let file_name = path.to_string_lossy();
-    let mut child = Command::new(bat_exe)
-        .args([
-            "--color=always",
-            "--paging=never",
-            "--style=plain",
-            "--tabs=4",
-            "--file-name",
-            file_name.as_ref(),
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+    let mut cmd = Command::new(bat_exe);
+    cmd.args([
+        "--color=always",
+        "--paging=never",
+        "--style=plain",
+        "--tabs=4",
+        "--file-name",
+        file_name.as_ref(),
+    ]);
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(decoded_content.as_bytes());
-    }
-
-    let output = child.wait_with_output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let text = String::from_utf8(output.stdout).ok()?;
+    let stdout = run_filter_command(&mut cmd, decoded_content.as_bytes())?;
+    let text = String::from_utf8(stdout).ok()?;
     Some(text.lines().map(|l| l.replace('\t', "    ")).collect())
 }
 
@@ -74,24 +89,11 @@ pub fn render_markdown_with_leaf(decoded_content: &str, width: usize) -> Option<
     let leaf_exe = resolve_leaf_executable()?;
     let clamped_width = width.max(20);
     let inline_spec = format!("ansi:{clamped_width}");
-    let mut child = Command::new(leaf_exe)
-        .args(["--inline", &inline_spec])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+    let mut cmd = Command::new(leaf_exe);
+    cmd.args(["--inline", &inline_spec]);
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(decoded_content.as_bytes());
-    }
-
-    let output = child.wait_with_output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let text = String::from_utf8(output.stdout).ok()?;
+    let stdout = run_filter_command(&mut cmd, decoded_content.as_bytes())?;
+    let text = String::from_utf8(stdout).ok()?;
     Some(text.lines().map(|l| l.replace('\t', "    ")).collect())
 }
 
@@ -325,5 +327,22 @@ mod tests {
 
         let matches_empty = find_matching_lines(&lines, "   ");
         assert!(matches_empty.is_empty());
+    }
+
+    #[test]
+    fn large_payload_rendering_does_not_deadlock() {
+        // Generate a 200 KB markdown text to exceed standard OS pipe buffers (typically 64 KB).
+        let line =
+            "# Heading with some text to render in markdown\n\nSome paragraph text that repeats.\n";
+        let repeated = line.repeat(2500); // ~200 KB
+        let result = render_markdown_with_leaf(&repeated, 80);
+        if let Some(lines) = result {
+            assert!(!lines.is_empty());
+        }
+
+        let bat_result = try_run_bat(Path::new("test.md"), &repeated);
+        if let Some(lines) = bat_result {
+            assert!(!lines.is_empty());
+        }
     }
 }

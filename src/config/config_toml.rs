@@ -88,12 +88,39 @@ impl Default for GeneralConfig {
     }
 }
 
+/// Icon display mode configured in `[layout]` of `config.toml`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IconTheme {
+    /// Nerd Font icons with filetype colors (recommended, default)
+    #[default]
+    Nerd,
+    /// Standard Unicode emojis (📁, 📄, 📦, etc.)
+    Unicode,
+    /// ASCII-only markers ([-], [/], *, etc.)
+    Ascii,
+    /// Do not display icons
+    None,
+}
+
+impl IconTheme {
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "nerd" | "nerdfont" => Self::Nerd,
+            "unicode" | "emoji" => Self::Unicode,
+            "ascii" => Self::Ascii,
+            "none" | "off" | "false" => Self::None,
+            _ => Self::Nerd,
+        }
+    }
+}
+
 /// UI layout options configured in `[layout]` of `config.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayoutConfig {
     pub tree_width_percent: u16,
     pub min_col_width: usize,
     pub time_format: String,
+    pub icons: IconTheme,
 }
 
 impl Default for LayoutConfig {
@@ -102,6 +129,7 @@ impl Default for LayoutConfig {
             tree_width_percent: 24,
             min_col_width: 24,
             time_format: "%Y/%m/%d %H:%M".to_string(),
+            icons: IconTheme::Nerd,
         }
     }
 }
@@ -269,6 +297,15 @@ pub fn load(path: &Path) -> ConfigTomlLoadResult {
         if let Some(toml::Value::String(s)) = lay_table.get("time_format") {
             if !s.trim().is_empty() {
                 layout.time_format = s.clone();
+            }
+        }
+        if let Some(val) = lay_table.get("icons") {
+            match val {
+                toml::Value::String(s) => layout.icons = IconTheme::parse(s),
+                toml::Value::Boolean(b) => {
+                    layout.icons = if *b { IconTheme::Nerd } else { IconTheme::None }
+                }
+                _ => {}
             }
         }
     }
@@ -663,6 +700,7 @@ scroll_offset = 4
 tree_width_percent = 30
 min_col_width = 35
 time_format = "%Y-%m-%d %H:%M"
+icons = "unicode"
 "#;
         fs::write(&path, content).unwrap();
 
@@ -676,6 +714,7 @@ time_format = "%Y-%m-%d %H:%M"
         assert_eq!(r.layout.tree_width_percent, 30);
         assert_eq!(r.layout.min_col_width, 35);
         assert_eq!(r.layout.time_format, "%Y-%m-%d %H:%M");
+        assert_eq!(r.layout.icons, IconTheme::Unicode);
     }
 
     #[test]

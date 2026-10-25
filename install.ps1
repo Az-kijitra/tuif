@@ -109,6 +109,8 @@ show_tree = true
 show_hidden = false
 show_size = true
 show_time = true
+# Icon theme: "nerd" (Nerd Font, recommended), "unicode" (emojis), "ascii" (symbols), "none"
+icons = "nerd"
 
 # Custom keybindings
 [input_keymap_custom]

@@ -3,9 +3,11 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, Clear, Gauge, List, ListItem, Paragraph, Row, Table};
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
+
+pub mod icons;
 
 use crate::app::{
     normalize_tree_key, tree_node_key, AppState, ClipMode, ConflictPromptData, FocusPane,
@@ -277,8 +279,33 @@ fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
                 };
             let indent = "  ".repeat(node.depth);
             let caret = if node.expanded { "▾ " } else { "▸ " };
-            let text = format!("{indent}{caret}{}", node.name);
-            let style = if i == app.tree_cursor && focused {
+            let is_drive = node.name.ends_with(":\\") || node.name.ends_with(":/");
+            let (tree_icon_glyph, tree_icon_color) = icons::tree_icon(
+                node.expanded,
+                node.remote.is_some(),
+                is_drive,
+                app.layout.icons,
+            );
+            let icon_str = if tree_icon_glyph.is_empty() {
+                String::new()
+            } else {
+                format!("{tree_icon_glyph} ")
+            };
+
+            let is_cursor = i == app.tree_cursor && focused;
+            let icon_style = if is_cursor {
+                Style::default().fg(app.theme.cursor_fg)
+            } else {
+                Style::default().fg(tree_icon_color)
+            };
+
+            let line = Line::from(vec![
+                Span::raw(indent),
+                Span::raw(caret),
+                Span::styled(icon_str, icon_style),
+                Span::raw(&node.name),
+            ]);
+            let style = if is_cursor {
                 Style::default()
                     .fg(app.theme.cursor_fg)
                     .bg(app.theme.cursor_bg)
@@ -292,7 +319,7 @@ fn draw_tree_pane(frame: &mut Frame, area: Rect, app: &AppState) {
             } else {
                 Style::default().fg(app.theme.file)
             };
-            ListItem::new(text).style(style)
+            ListItem::new(line).style(style)
         })
         .collect();
 
@@ -403,26 +430,25 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
             let entry = &app.entries[real_idx];
             let is_focused = vis_idx == app.focused_vis_idx;
             let is_selected = app.selected_paths.contains(&entry.path);
+            let is_dir = entry.entry_type == EntryType::Dir;
+
+            let (icon_glyph, icon_color) = icons::file_icon(&entry.name, is_dir, app.layout.icons);
+            let icon_str = if icon_glyph.is_empty() {
+                String::new()
+            } else {
+                format!("{icon_glyph} ")
+            };
+            let icon_width = UnicodeWidthStr::width(icon_str.as_str());
+            let avail_name_width = max_name_width.saturating_sub(icon_width);
+            let truncated_name = truncate_display_width(&entry.name, avail_name_width);
 
             let mark = if is_selected { "*" } else { " " };
-            let name_col = format!(
-                "{mark} {}",
-                truncate_display_width(&entry.name, max_name_width)
-            );
-            let size_col = if entry.entry_type == EntryType::Dir {
+            let size_col = if is_dir {
                 "<DIR>".to_string()
             } else {
                 format_size(entry.size)
             };
             let time_col = format_timestamp(&entry.modified, &app.layout.time_format);
-
-            let mut cells = vec![name_col];
-            if app.ui_state.ui_show_size {
-                cells.push(size_col);
-            }
-            if app.ui_state.ui_show_time {
-                cells.push(time_col);
-            }
 
             let is_exe = entry.name.ends_with(".exe")
                 || entry.name.ends_with(".bat")
@@ -438,7 +464,7 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
                 Style::default()
                     .fg(app.theme.selected)
                     .add_modifier(Modifier::BOLD)
-            } else if entry.entry_type == EntryType::Dir {
+            } else if is_dir {
                 Style::default()
                     .fg(app.theme.folder)
                     .add_modifier(Modifier::BOLD)
@@ -447,6 +473,27 @@ fn draw_file_list_pane(frame: &mut Frame, area: Rect, app: &AppState) {
             } else {
                 Style::default().fg(app.theme.file)
             };
+
+            let name_cell = if is_focused && focused {
+                Cell::from(Line::from(vec![
+                    Span::raw(format!("{mark} {icon_str}")),
+                    Span::raw(truncated_name),
+                ]))
+            } else {
+                Cell::from(Line::from(vec![
+                    Span::raw(format!("{mark} ")),
+                    Span::styled(icon_str, Style::default().fg(icon_color)),
+                    Span::raw(truncated_name),
+                ]))
+            };
+
+            let mut cells = vec![name_cell];
+            if app.ui_state.ui_show_size {
+                cells.push(Cell::from(size_col));
+            }
+            if app.ui_state.ui_show_time {
+                cells.push(Cell::from(time_col));
+            }
 
             rows.push(Row::new(cells).style(style));
         }

@@ -559,10 +559,17 @@ scroll_offset = 2            # ツリーペイン等のスクロール余白行�
 tree_width_percent = 24      # Drives / Tree ペインの横幅の割合 (10〜50, default: 24)
 min_col_width = 24           # マルチカラム一覧表示時の1列あたりの最小文字幅 (10〜80, default: 24)
 time_format = "%Y/%m/%d %H:%M" # 更新日時の表示フォーマット (default: "%Y/%m/%d %H:%M")
+icons = "nerd"               # アイコン表示形式: "nerd" (Nerd Font, 推奨), "unicode" (絵文字), "ascii" (記号), "none" (非表示)
 ```
 
 ### 設定項目の詳細
 
+- **`icons`**:
+  ファイル一覧およびツリーペインのアイコン表示形式を指定します。
+  - `"nerd"`（推奨・デフォルト）: Nerd Font グリフ。ファイル形式・言語（Rust, Python, Markdown 等）ごとに固有アイコンと専用カラーで表示されます。
+  - `"unicode"`: OS 標準絵文字（📁, 📄, 📦, 🖼️ 等）。Nerd Font がない環境でもカラー絵文字で識別できます。
+  - `"ascii"`: 記号（`[/]`, `*`, `[Z]`, `-` 等）。
+  - `"none"`: アイコンを表示せずファイル名のみを表示します。
 - **`confirm_delete`**:
   `false` に設定すると、ファイルやフォルダを削除（`d` / `Delete`）する際に確認ダイアログを出さずに即座に実行します。
 - **`delete_to_trash`**:
@@ -655,6 +662,7 @@ scroll_offset = 2            # ツリーペイン等のスクロール余白行�
 tree_width_percent = 24      # Drives / Tree ペインの横幅の割合 (10〜50, default: 24)
 min_col_width = 24           # マルチカラム一覧表示時の1列あたりの最小文字幅 (10〜80, default: 24)
 time_format = "%Y/%m/%d %H:%M" # 更新日時の表示フォーマット (default: "%Y/%m/%d %H:%M")
+icons = "nerd"               # アイコン表示: "nerd", "unicode", "ascii", "none"
 
 # --------------------------------------------------------
 # 3. カラーテーマ ([theme] / [colors])

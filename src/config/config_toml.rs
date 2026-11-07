@@ -134,6 +134,18 @@ impl Default for LayoutConfig {
     }
 }
 
+/// One `[[external_apps]]` entry as written in `config.toml`, before key-chord validation
+/// (that happens in `external_apps::merge_user_apps`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RawExternalApp {
+    pub name: String,
+    pub program: String,
+    pub args: Vec<String>,
+    pub args_for_file: Option<Vec<String>>,
+    pub key_chord: Option<String>,
+    pub is_gui: bool,
+}
+
 /// Everything read from `config.toml` in one go (R-917-8).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigTomlLoadResult {
@@ -142,6 +154,9 @@ pub struct ConfigTomlLoadResult {
     pub theme: Theme,
     pub general: GeneralConfig,
     pub layout: LayoutConfig,
+    pub external_apps: Vec<RawExternalApp>,
+    /// Human-readable notes about `[[external_apps]]` entries that were skipped.
+    pub external_apps_errors: Vec<String>,
 }
 
 impl Default for ConfigTomlLoadResult {
@@ -152,6 +167,8 @@ impl Default for ConfigTomlLoadResult {
             theme: Theme::default(),
             general: GeneralConfig::default(),
             layout: LayoutConfig::default(),
+            external_apps: Vec::new(),
+            external_apps_errors: Vec::new(),
         }
     }
 }
@@ -171,7 +188,75 @@ fn whole_file_failure(message: String, line: Option<u32>) -> ConfigTomlLoadResul
         theme: Theme::default(),
         general: GeneralConfig::default(),
         layout: LayoutConfig::default(),
+        external_apps: Vec::new(),
+        external_apps_errors: Vec::new(),
     }
+}
+
+fn string_array(value: Option<&toml::Value>) -> Option<Vec<String>> {
+    value?
+        .as_array()?
+        .iter()
+        .map(|v| v.as_str().map(str::to_string))
+        .collect()
+}
+
+/// Reads the `[[external_apps]]` array of tables. Entries without a `name` and `program`
+/// string are skipped and reported; other fields fall back to empty / `false`.
+fn parse_external_apps(table: &toml::value::Table) -> (Vec<RawExternalApp>, Vec<String>) {
+    let mut apps = Vec::new();
+    let mut errors = Vec::new();
+    let Some(value) = table.get("external_apps") else {
+        return (apps, errors);
+    };
+    let Some(items) = value.as_array() else {
+        errors.push("external_apps must be an array of tables ([[external_apps]])".to_string());
+        return (apps, errors);
+    };
+    for (i, item) in items.iter().enumerate() {
+        let Some(t) = item.as_table() else {
+            errors.push(format!("external_apps #{}: not a table", i + 1));
+            continue;
+        };
+        let name = t.get("name").and_then(|v| v.as_str()).unwrap_or("").trim();
+        let program = t
+            .get("program")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if name.is_empty() || program.is_empty() {
+            errors.push(format!(
+                "external_apps #{}: `name` and `program` are required",
+                i + 1
+            ));
+            continue;
+        }
+        let args = match t.get("args") {
+            None => Vec::new(),
+            Some(v) => match string_array(Some(v)) {
+                Some(a) => a,
+                None => {
+                    errors.push(format!(
+                        "external_apps \"{name}\": `args` must be an array of strings"
+                    ));
+                    continue;
+                }
+            },
+        };
+        apps.push(RawExternalApp {
+            name: name.to_string(),
+            program: program.to_string(),
+            args,
+            args_for_file: string_array(t.get("args_for_file")),
+            key_chord: t
+                .get("key_chord")
+                .or_else(|| t.get("key"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            is_gui: t.get("is_gui").and_then(|v| v.as_bool()).unwrap_or(false),
+        });
+    }
+    (apps, errors)
 }
 
 /// Recovers a 1-based line number from a `toml::de::Error`'s byte-offset span
@@ -368,12 +453,15 @@ pub fn load(path: &Path) -> ConfigTomlLoadResult {
             }
         }
     };
+    let (external_apps, external_apps_errors) = parse_external_apps(table);
     ConfigTomlLoadResult {
         keymap,
         ui_theme,
         theme,
         general,
         layout,
+        external_apps,
+        external_apps_errors,
     }
 }
 
@@ -387,6 +475,58 @@ fn default_theme_from_ui_theme(ui_theme: &UiThemeRaw) -> Theme {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_external_apps_and_reports_invalid_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            r#"
+[[external_apps]]
+name = "Notepad++"
+program = "notepad++.exe"
+args = ["{path}"]
+key_chord = "Ctrl+Alt+N"
+is_gui = true
+
+[[external_apps]]
+name = "No program"
+
+[[external_apps]]
+name = "Bad args"
+program = "x.exe"
+args = "not-an-array"
+
+[[external_apps]]
+name = "Minimal"
+program = "y.exe"
+"#,
+        )
+        .unwrap();
+
+        let r = load(&path);
+        assert_eq!(
+            r.external_apps,
+            vec![
+                RawExternalApp {
+                    name: "Notepad++".into(),
+                    program: "notepad++.exe".into(),
+                    args: vec!["{path}".into()],
+                    args_for_file: None,
+                    key_chord: Some("Ctrl+Alt+N".into()),
+                    is_gui: true,
+                },
+                RawExternalApp {
+                    name: "Minimal".into(),
+                    program: "y.exe".into(),
+                    ..Default::default()
+                },
+            ]
+        );
+        assert_eq!(r.external_apps_errors.len(), 2);
+        assert_eq!(r.keymap.parse_error, None);
+    }
 
     fn sorted(mut entries: Vec<RawKeymapEntry>) -> Vec<RawKeymapEntry> {
         entries.sort_by(|a, b| a.action_id.cmp(&b.action_id));

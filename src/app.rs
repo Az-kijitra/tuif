@@ -11,8 +11,8 @@ use regex::RegexBuilder;
 
 use crate::config::paths;
 use crate::external_apps::{
-    build_args, default_external_apps, resolve_executable, ExternalAppEntry, FuzzyKind,
-    FuzzySelection, LaunchTarget, PendingFuzzySearch,
+    build_args, default_external_apps, merge_user_apps, resolve_executable, ExternalAppEntry,
+    FuzzyKind, FuzzySelection, LaunchTarget, PendingFuzzySearch,
 };
 use crate::fs::query::{self, Entry, EntryType};
 use crate::fs::win_drives;
@@ -354,6 +354,9 @@ impl AppState {
             .map(|p| crate::config::config_toml::load(&p))
             .unwrap_or_default();
         let (keymap, rejected) = Keymap::from_custom(&cfg_load.keymap.entries);
+        let (external_apps, mut app_notes) =
+            merge_user_apps(default_external_apps(), &cfg_load.external_apps);
+        app_notes.extend(cfg_load.external_apps_errors);
         let theme = cfg_load.theme;
         let general = cfg_load.general;
         let layout = cfg_load.layout;
@@ -361,6 +364,8 @@ impl AppState {
         let mut status_message = String::from("j/k:Move  Enter:Open  BS/-:Up  Tab:Tree  y/x/p:Yank/Cut/Paste  /:Search  ;:Actions  F10:Menu  q:Quit");
         if !rejected.is_empty() {
             status_message = format!("Skipped invalid keybindings: {}", rejected.join(", "));
+        } else if !app_notes.is_empty() {
+            status_message = format!("config.toml external_apps: {}", app_notes.join("; "));
         }
 
         let drives = win_drives::list_logical_drives();
@@ -392,7 +397,7 @@ impl AppState {
             ui_state,
             nav_data,
             keymap,
-            external_apps: default_external_apps(),
+            external_apps,
             clipboard: None,
             search_query: String::new(),
             search_regex: false,

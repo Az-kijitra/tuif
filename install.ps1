@@ -3,12 +3,13 @@
     Automated installer for tuif (Windows TUI File Manager).
 .DESCRIPTION
     Installs tuif.exe to $env:LOCALAPPDATA\Programs\tuif, configures the User PATH,
-    registers the `tf` (cd on exit) alias in PowerShell $PROFILE, and initializes configuration.
+    registers the `tf` (cd on exit) function in PowerShell $PROFILE, and initializes configuration.
+    No administrator rights are required.
 .EXAMPLE
     # Remote one-liner execution:
     irm https://raw.githubusercontent.com/Az-kijitra/tuif/master/install.ps1 | iex
 
-    # Local execution from repository:
+    # Local execution from an extracted release ZIP or the repository:
     .\install.ps1
 #>
 
@@ -17,129 +18,142 @@ param(
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\tuif"
 )
 
-$ErrorActionPreference = "Stop"
+# Everything runs inside a script block so that `irm | iex` does not leave variables or
+# a changed $ErrorActionPreference behind in the caller's session.
+& {
+    $ErrorActionPreference = "Stop"
+    $Repo = "Az-kijitra/tuif"
+    $ReleaseBase = "https://github.com/$Repo/releases/latest/download"
+    $RawBase = "https://raw.githubusercontent.com/$Repo/master"
 
-Write-Host "=== tuif Installer ===" -ForegroundColor Cyan
+    Write-Host "=== tuif Installer ===" -ForegroundColor Cyan
 
-# 1. Target directory
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-}
-
-$TargetExe = Join-Path $InstallDir "tuif.exe"
-
-# 2. Copy local release binary if present, or download from GitHub Releases
-$LocalExe = ""
-if ($PSScriptRoot) {
-    if (Test-Path (Join-Path $PSScriptRoot "tuif.exe")) {
-        $LocalExe = Join-Path $PSScriptRoot "tuif.exe"
-    } elseif (Test-Path (Join-Path $PSScriptRoot "target\release\tuif.exe")) {
-        $LocalExe = Join-Path $PSScriptRoot "target\release\tuif.exe"
-    }
-}
-
-if ($LocalExe -and (Test-Path $LocalExe)) {
-    Write-Host "[1/4] Copying local binary from $LocalExe..." -ForegroundColor Green
-    Copy-Item -Path $LocalExe -Destination $TargetExe -Force
-} else {
-    Write-Host "[1/4] Downloading latest tuif.exe from GitHub Releases..." -ForegroundColor Green
-    $DownloadUrl = "https://github.com/Az-kijitra/tuif/releases/latest/download/tuif.exe"
+    # Older Windows PowerShell 5.1 defaults to TLS 1.0. Enable TLS 1.2 (and 1.3 when the runtime knows it).
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $TargetExe -UseBasicParsing
-    } catch {
-        Write-Error "Failed to download tuif.exe from $DownloadUrl. Error: $_"
+        $proto = [Net.SecurityProtocolType]::Tls12
+        if ([Enum]::GetNames([Net.SecurityProtocolType]) -contains "Tls13") {
+            $proto = $proto -bor [Net.SecurityProtocolType]::Tls13
+        }
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $proto
+    } catch { }
+
+    function Get-Remote([string]$Url, [string]$OutFile) {
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+    }
+
+    # 1. Target directory
+    if (-not (Test-Path $InstallDir)) {
+        New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+    }
+    $TargetExe = Join-Path $InstallDir "tuif.exe"
+    $TargetUninstall = Join-Path $InstallDir "uninstall.ps1"
+
+    # 2. Binary: copy a local one (release ZIP / repo build) or download the latest release
+    $LocalExe = $null
+    if ($PSScriptRoot) {
+        foreach ($candidate in @("tuif.exe", "target\release\tuif.exe")) {
+            $p = Join-Path $PSScriptRoot $candidate
+            if (Test-Path $p) { $LocalExe = $p; break }
+        }
+    }
+
+    if (Get-Process -Name tuif -ErrorAction SilentlyContinue) {
+        Write-Warning "tuif is running. Close all tuif windows first, then run the installer again."
         return
     }
-}
 
-# Also copy uninstall.ps1 to install directory if available locally
-$LocalUninstall = if ($PSScriptRoot) { Join-Path $PSScriptRoot "uninstall.ps1" } else { "" }
-if ($LocalUninstall -and (Test-Path $LocalUninstall)) {
-    Copy-Item -Path $LocalUninstall -Destination (Join-Path $InstallDir "uninstall.ps1") -Force
-}
+    if ($LocalExe) {
+        Write-Host "[1/4] Copying local binary from $LocalExe..." -ForegroundColor Green
+        Copy-Item -Path $LocalExe -Destination $TargetExe -Force
+    } else {
+        Write-Host "[1/4] Downloading latest tuif.exe from GitHub Releases..." -ForegroundColor Green
+        $TmpExe = Join-Path ([IO.Path]::GetTempPath()) ("tuif-" + [guid]::NewGuid() + ".exe")
+        try {
+            Get-Remote "$ReleaseBase/tuif.exe" $TmpExe
 
-if (-not (Test-Path $TargetExe)) {
-    Write-Error "tuif.exe could not be installed to $TargetExe."
-    return
-}
-Write-Host "      Installed: $TargetExe" -ForegroundColor Gray
-
-# 3. Add to User PATH
-Write-Host "[2/4] Configuring User PATH..." -ForegroundColor Green
-$UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-if (-not $UserPath) { $UserPath = "" }
-$PathEntries = ($UserPath -split ";") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-if ($PathEntries -notcontains $InstallDir) {
-    $NewUserPath = if ($UserPath) { "$UserPath;$InstallDir" } else { $InstallDir }
-    [Environment]::SetEnvironmentVariable("Path", $NewUserPath, [EnvironmentVariableTarget]::User)
-    Write-Host "      Added $InstallDir to User PATH." -ForegroundColor Gray
-} else {
-    Write-Host "      $InstallDir is already in User PATH." -ForegroundColor Gray
-}
-
-# Update current session PATH so tuif is immediately usable
-if (($env:Path -split ";") -notcontains $InstallDir) {
-    $env:Path = "$env:Path;$InstallDir"
-}
-
-# 4. Initialize config file
-Write-Host "[3/4] Initializing configuration (%APPDATA%\tuif)..." -ForegroundColor Green
-try {
-    $ConfigDir = Join-Path $env:APPDATA "tuif"
-    if (-not (Test-Path $ConfigDir)) {
-        New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
+            # Verify the SHA256 checksum published next to the binary.
+            $TmpSha = "$TmpExe.sha256"
+            $expected = $null
+            try {
+                Get-Remote "$ReleaseBase/tuif.exe.sha256" $TmpSha
+                $m = [regex]::Match((Get-Content -Path $TmpSha -Raw), "[0-9a-fA-F]{64}")
+                if ($m.Success) { $expected = $m.Value.ToLowerInvariant() }
+            } catch { } finally {
+                Remove-Item -Path $TmpSha -Force -ErrorAction SilentlyContinue
+            }
+            $actual = (Get-FileHash -Path $TmpExe -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($expected) {
+                if ($actual -ne $expected) {
+                    throw "SHA256 mismatch for tuif.exe (expected $expected, got $actual). Aborting."
+                }
+                Write-Host "      SHA256 verified: $actual" -ForegroundColor Gray
+            } else {
+                Write-Warning "This release has no tuif.exe.sha256; skipping checksum verification (SHA256: $actual)."
+            }
+            Move-Item -Path $TmpExe -Destination $TargetExe -Force
+        } catch {
+            Remove-Item -Path $TmpExe -Force -ErrorAction SilentlyContinue
+            Write-Error "Failed to install tuif.exe: $_"
+            return
+        }
     }
-    $ConfigFile = Join-Path $ConfigDir "config.toml"
-    if (-not (Test-Path $ConfigFile)) {
-        $Template = @'
-# ==============================================================================
-# tuif configuration file (%APPDATA%\tuif\config.toml)
-# Documentation: https://github.com/Az-kijitra/tuif/blob/master/docs/user_manual.md
-# ==============================================================================
+    Write-Host "      Installed: $TargetExe" -ForegroundColor Gray
 
-# UI Theme: "default", "nord", "monokai", "catppuccin", "solarized_dark", "light"
-theme = "default"
-
-[general]
-confirm_delete = true
-
-[layout]
-show_tree = true
-show_hidden = false
-show_size = true
-show_time = true
-# Icon theme: "nerd" (Nerd Font, recommended), "unicode" (emojis), "ascii" (symbols), "none"
-icons = "nerd"
-
-# Custom keybindings
-[input_keymap_custom]
-# Example:
-# open = "Enter"
-# copy = "y, Ctrl+C"
-
-# ------------------------------------------------------------------------------
-# External Applications ([[external_apps]])
-# Placeholders: {path} = selected item full path, {dir} = current folder path
-# is_gui: true = launch in background, false = suspend TUI and run in foreground
-# ------------------------------------------------------------------------------
-# [[external_apps]]
-# name = "Run Python Script"
-# program = "python.exe"
-# args = ["C:\\path\\to\\script.py", "{path}"]
-# key_chord = "Ctrl+Alt+P"
-# is_gui = false
-'@
-        Set-Content -Path $ConfigFile -Value $Template -Encoding UTF8
+    # uninstall.ps1 goes next to the binary so `& "$env:LOCALAPPDATA\Programs\tuif\uninstall.ps1"` works
+    $LocalUninstall = if ($PSScriptRoot) { Join-Path $PSScriptRoot "uninstall.ps1" } else { $null }
+    if ($LocalUninstall -and (Test-Path $LocalUninstall)) {
+        Copy-Item -Path $LocalUninstall -Destination $TargetUninstall -Force
+    } else {
+        try {
+            Get-Remote "$ReleaseBase/uninstall.ps1" $TargetUninstall
+        } catch {
+            try {
+                Get-Remote "$RawBase/uninstall.ps1" $TargetUninstall
+            } catch {
+                Write-Warning "Could not download uninstall.ps1: $_"
+            }
+        }
     }
-    Write-Host "      Config file ready at: $ConfigFile" -ForegroundColor Gray
-} catch {
-    Write-Host "      Note: Could not initialize config: $_" -ForegroundColor Yellow
-}
 
-# 5. Configure PowerShell $PROFILE (tf alias with cd on exit)
-Write-Host "[4/4] Setting up PowerShell `$PROFILE (`tf` alias)..." -ForegroundColor Green
-$ProfileBlock = @'
+    # 3. User PATH. Read and write the raw registry value so entries such as
+    #    %USERPROFILE%\bin stay unexpanded (REG_EXPAND_SZ).
+    Write-Host "[2/4] Configuring User PATH..." -ForegroundColor Green
+    $EnvKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment", $true)
+    try {
+        $RawPath = [string]$EnvKey.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        $Entries = @($RawPath -split ";" | Where-Object { $_.Trim() })
+        $AlreadyThere = $Entries | Where-Object {
+            [Environment]::ExpandEnvironmentVariables($_).TrimEnd("\") -ieq $InstallDir.TrimEnd("\")
+        }
+        if (-not $AlreadyThere) {
+            $NewPath = (@($Entries) + $InstallDir) -join ";"
+            $EnvKey.SetValue("Path", $NewPath, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+            # Broadcast WM_SETTINGCHANGE so new terminals pick up the change.
+            [Environment]::SetEnvironmentVariable("TUIF_INSTALL_TMP", "1", "User")
+            [Environment]::SetEnvironmentVariable("TUIF_INSTALL_TMP", $null, "User")
+            Write-Host "      Added $InstallDir to User PATH." -ForegroundColor Gray
+        } else {
+            Write-Host "      $InstallDir is already in User PATH." -ForegroundColor Gray
+        }
+    } finally {
+        $EnvKey.Close()
+    }
+    if (($env:Path -split ";") -notcontains $InstallDir) {
+        $env:Path = "$env:Path;$InstallDir"
+    }
+
+    # 4. Config file (the template lives inside tuif.exe; an existing file is never touched)
+    Write-Host "[3/4] Initializing configuration (%APPDATA%\tuif)..." -ForegroundColor Green
+    $HelpText = (& $TargetExe --help) -join "`n"
+    if ($HelpText -match "--init-config") {
+        & $TargetExe --init-config | ForEach-Object { Write-Host "      $_" -ForegroundColor Gray }
+    } else {
+        Write-Host "      Skipped (this tuif version creates config.toml on 'tuif --config')." -ForegroundColor Gray
+    }
+
+    # 5. PowerShell $PROFILE: `tf` = launch tuif and cd to its last folder on exit
+    Write-Host "[4/4] Setting up PowerShell `$PROFILE (tf function)..." -ForegroundColor Green
+    $ProfileBlock = @'
 
 # --- tuif (Invoke-Tuif / tf) Integration ---
 function Invoke-Tuif {
@@ -148,7 +162,7 @@ function Invoke-Tuif {
         tuif.exe --choosedir $tmp @args
         if (Test-Path $tmp) {
             $cwd = Get-Content -Path $tmp -Raw -Encoding UTF8
-            if (-not [string]::IsNullOrWhiteSpace($cwd) -and (Test-Path $cwd)) {
+            if (-not [string]::IsNullOrWhiteSpace($cwd) -and (Test-Path -LiteralPath $cwd.Trim())) {
                 Set-Location -LiteralPath $cwd.Trim()
             }
         }
@@ -160,30 +174,33 @@ Set-Alias -Name tf -Value Invoke-Tuif -ErrorAction SilentlyContinue
 # -------------------------------------------
 '@
 
-$ProfileDir = Split-Path -Parent $PROFILE
-if (-not (Test-Path $ProfileDir)) {
-    New-Item -ItemType Directory -Path $ProfileDir -Force | Out-Null
-}
-if (-not (Test-Path $PROFILE)) {
-    New-Item -ItemType File -Path $PROFILE -Force | Out-Null
-}
+    $ProfileDir = Split-Path -Parent $PROFILE
+    if (-not (Test-Path $ProfileDir)) {
+        New-Item -ItemType Directory -Path $ProfileDir -Force | Out-Null
+    }
+    if (-not (Test-Path $PROFILE)) {
+        New-Item -ItemType File -Path $PROFILE -Force | Out-Null
+    }
+    $ProfileContent = Get-Content -Path $PROFILE -Raw -ErrorAction SilentlyContinue
+    if ($ProfileContent -notmatch "Invoke-Tuif") {
+        Add-Content -Path $PROFILE -Value "`n$ProfileBlock" -Encoding UTF8
+        Write-Host "      Added Invoke-Tuif and the tf alias to $PROFILE." -ForegroundColor Gray
+    } else {
+        Write-Host "      tf is already configured in $PROFILE." -ForegroundColor Gray
+    }
 
-$ProfileContent = Get-Content -Path $PROFILE -Raw -ErrorAction SilentlyContinue
-if ($ProfileContent -notmatch "Invoke-Tuif") {
-    Add-Content -Path $PROFILE -Value "`n$ProfileBlock" -Encoding UTF8
-    Write-Host "      Added `Invoke-Tuif` and `tf` alias to $PROFILE." -ForegroundColor Gray
-} else {
-    Write-Host "      `tf` alias already configured in $PROFILE." -ForegroundColor Gray
+    # Make `tf` usable in this session too (global scope, since we run inside a script block).
+    $SessionBlock = $ProfileBlock -replace "function Invoke-Tuif", "function global:Invoke-Tuif" `
+        -replace "Set-Alias -Name tf", "Set-Alias -Scope Global -Name tf"
+    Invoke-Expression $SessionBlock
+
+    Write-Host ""
+    Write-Host "=== Installation complete! ===" -ForegroundColor Cyan
+    Write-Host "Available commands:" -ForegroundColor White
+    Write-Host "  tf                 Launch tuif and cd to its last folder on exit" -ForegroundColor Yellow
+    Write-Host "  tuif               Launch tuif standalone" -ForegroundColor Yellow
+    Write-Host "  tuif --config      Open config.toml in your text editor" -ForegroundColor Yellow
+    Write-Host "  tuif --config-dir  Open %APPDATA%\tuif in Explorer" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Uninstall: & `"$TargetUninstall`"" -ForegroundColor DarkGray
 }
-
-# Apply to current session
-Invoke-Expression $ProfileBlock
-
-Write-Host ""
-Write-Host "=== Installation complete! ===" -ForegroundColor Cyan
-Write-Host "Available commands:" -ForegroundColor White
-Write-Host "  tf                 Launch tuif with automatic folder following (cd on exit)" -ForegroundColor Yellow
-Write-Host "  tuif               Launch tuif standalone" -ForegroundColor Yellow
-Write-Host "  tuif --config      Open config.toml in your text editor" -ForegroundColor Yellow
-Write-Host "  tuif --config-dir  Open %APPDATA%\tuif in Explorer" -ForegroundColor Yellow
-Write-Host ""

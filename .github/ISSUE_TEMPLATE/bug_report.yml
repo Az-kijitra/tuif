@@ -1,0 +1,80 @@
+name: 不具合の報告 / Bug report
+description: tuif が期待どおりに動かない場合はこちら
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。セキュリティに関わる問題は、ここではなく [SECURITY.md](https://github.com/Az-kijitra/tuif/blob/master/SECURITY.md) の手順で報告してください。
+        English reports are welcome.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 何が起きたか / What happened
+      description: 実際の動作と、期待していた動作を書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順 / Steps to reproduce
+      placeholder: |
+        1. `tf` で起動
+        2. `D:\work` で `Ctrl+P` を押す
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: tuif-version
+    attributes:
+      label: tuif のバージョン
+      description: "`tuif --version` の出力"
+      placeholder: tuif 0.1.1
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows のバージョン
+      description: "`winver` で確認できます"
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: dropdown
+    id: terminal
+    attributes:
+      label: ターミナル / Terminal
+      options:
+        - Windows Terminal
+        - VS Code の統合ターミナル
+        - conhost（従来のコンソール）
+        - WezTerm
+        - Alacritty
+        - その他（下の欄に記入）
+    validations:
+      required: true
+  - type: dropdown
+    id: shell
+    attributes:
+      label: シェル / Shell
+      options:
+        - PowerShell 7 (pwsh)
+        - Windows PowerShell 5.1
+        - cmd.exe
+        - その他
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: インストール方法
+      options:
+        - ワンライナー (irm | iex)
+        - リリース ZIP の install.ps1
+        - cargo install / ソースからビルド
+        - その他
+  - type: textarea
+    id: extra
+    attributes:
+      label: 補足情報
+      description: スクリーンショット、関係しそうな config.toml の内容、使っているフォントや外部ツール（fzf、bat など）のバージョンなど。パスワードやホスト名などの機密情報は消してから貼ってください。

@@ -5,9 +5,15 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-08
+
 ### 修正
 - ローカルフォルダで「新規フォルダ作成」(`A` / `Ctrl+Shift+N` / メニュー) が常に `InvalidKind` で失敗していた問題を修正しました。
 - SFTP 接続プロファイルの編集画面で、`2222` など同じ数字が続くポート番号を入力できなかった問題を修正しました。新規プロファイルのポート欄は空欄で始まり、空欄のまま保存すると `22` になります。
+
+### その他
+- 内部構造を整理しました（`src/app.rs` をモジュールに分割）。動作は変わりません。
+- 結合テストが開発者の実際の設定フォルダ (`%APPDATA%\tuif`) を読み書きしないようにしました。
 
 ## [0.1.1] - 2026-11-08
 
@@ -45,6 +51,7 @@
 - PowerShell の cd on exit (`tf`) と、ワンライナーで導入できるインストーラー
 - 6 種類のテーマ、色の個別上書き、キーマップのカスタマイズ
 
-[Unreleased]: https://github.com/Az-kijitra/tuif/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Az-kijitra/tuif/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Az-kijitra/tuif/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Az-kijitra/tuif/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Az-kijitra/tuif/releases/tag/v0.1.0

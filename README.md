@@ -93,8 +93,9 @@ tuif --config-dir
 ## ドキュメント
 
 - [ユーザーマニュアル](docs/user_manual.md)
-- [仕様台帳](specs/_registry.md)
-- [トレーサビリティ台帳](docs/architecture/traceability.md)
+- [変更履歴 (CHANGELOG)](CHANGELOG.md)
+- [貢献ガイド (CONTRIBUTING)](CONTRIBUTING.md): ビルド方法、PR の流れ、仕様書と開発パイプライン
+- [セキュリティポリシー (SECURITY)](SECURITY.md): 脆弱性の報告方法、認証情報の扱い
 
 ---
 

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: セキュリティ上の問題の報告 / Report a vulnerability
+    url: https://github.com/Az-kijitra/tuif/security/advisories/new
+    about: 脆弱性は公開の Issue ではなく、こちらから非公開で報告してください。
+  - name: ユーザーマニュアル / User manual
+    url: https://github.com/Az-kijitra/tuif/blob/master/docs/user_manual.md
+    about: キー操作や設定方法はマニュアルにまとめています。

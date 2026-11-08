@@ -1,0 +1,23 @@
+name: 機能の提案 / Feature request
+description: 新しい機能や改善のアイデア
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること / Problem
+      description: どんな場面で、何がしにくいかを書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案する動作 / Proposal
+      description: キー操作や画面の動きなど、具体的なイメージがあれば書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 他に考えた方法 / Alternatives
+      description: 今の回避策や、ほかのファイラーでの実現方法などがあれば書いてください。

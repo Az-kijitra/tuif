@@ -1,5 +1,7 @@
 //! Integration tests for Windows Explorer clipboard interoperability (`CF_HDROP`).
 
+mod common;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::fs;
 use std::sync::Mutex;
@@ -23,6 +25,7 @@ fn test_tuif_yank_and_cut_exports_to_os_clipboard() {
     let file_a = root.join("file_a.txt");
     fs::write(&file_a, "alpha").unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
     while app.focused_entry().map(|e| e.name.as_str()) != Some("file_a.txt") {
         app.handle_key_event(key(KeyCode::Char('j')));
@@ -60,6 +63,7 @@ fn test_tuif_paste_imports_from_os_clipboard_copy() {
     let ok = set_os_clipboard_files(std::slice::from_ref(&ext_file), ClipboardEffect::Copy);
     assert!(ok);
 
+    common::isolate_config();
     let mut app = AppState::new(dest_dir.clone());
     // Clear app's internal clipboard to verify it reads from OS clipboard
     app.clipboard = None;
@@ -103,6 +107,7 @@ fn test_tuif_paste_imports_from_os_clipboard_cut() {
     let ok = set_os_clipboard_files(std::slice::from_ref(&ext_file), ClipboardEffect::Move);
     assert!(ok);
 
+    common::isolate_config();
     let mut app = AppState::new(dest_dir.clone());
     app.clipboard = None;
 

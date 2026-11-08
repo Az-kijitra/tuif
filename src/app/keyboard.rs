@@ -820,7 +820,11 @@ impl AppState {
                 KeyCode::Char('a') | KeyCode::Char('n') => {
                     self.overlay = OverlayMode::ConnectionEdit {
                         is_new: true,
-                        profile: ConnectionProfile::default(),
+                        // Port starts empty (0) so typing does not append to "22"; saved as 22 if left empty.
+                        profile: ConnectionProfile {
+                            port: 0,
+                            ..ConnectionProfile::default()
+                        },
                         cursor: 0,
                         password_buffer: String::new(),
                     };
@@ -936,7 +940,7 @@ impl AppState {
                         2 => {
                             if c.is_ascii_digit() {
                                 let mut s = profile.port.to_string();
-                                if s == "0" || s == "22" && profile.port == 22 {
+                                if s == "0" {
                                     s.clear();
                                 }
                                 s.push(c);

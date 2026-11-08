@@ -1,6 +1,8 @@
 //! Integration tests for `tuif` (Vim-like keybinding navigation, file operations, search,
 //! viewer overlay, external CUI tool resolution, and headless Ratatui rendering).
 
+mod common;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
@@ -37,6 +39,7 @@ fn open_default_app_default_bindings() {
 fn exit_and_cd_keybindings_and_state() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
 
     // 'q' sets should_quit = true and should_cd_on_exit = false
@@ -62,6 +65,7 @@ fn vim_navigation_and_file_ops_workflow() {
     std::fs::write(root.join("file1.txt"), b"hello tuif\nline 2").unwrap();
     std::fs::write(root.join("file2.md"), b"# Title\nmarkdown body").unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
     app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
@@ -179,6 +183,7 @@ fn multi_column_left_right_navigation_tracks_terminal_height() {
         std::fs::write(root.join(format!("item_{i:02}.txt")), b"x").unwrap();
     }
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
     app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
@@ -222,6 +227,7 @@ fn parent_navigation_preserves_cursor_on_child_folder() {
     std::fs::create_dir_all(root.join("gamma_dir")).unwrap();
 
     // Start inside `beta_dir/nested`
+    common::isolate_config();
     let mut app = AppState::new(root.join("beta_dir").join("nested"));
     app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
@@ -253,6 +259,7 @@ fn mouse_explorer_workflow_left_double_and_right_click_action_menu() {
     std::fs::write(root.join("alpha.txt"), b"alpha").unwrap();
     std::fs::write(root.join("beta.txt"), b"beta").unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
     app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
@@ -327,6 +334,7 @@ fn tree_right_click_action_menu_and_gui_apps_workflow() {
     std::fs::create_dir(&dir_a).unwrap();
     std::fs::create_dir(&dir_b).unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
     app.ui_state = tuif::shared::schema::ui_state::UiStateData::default();
     app.reload_dir();
@@ -400,6 +408,7 @@ fn tree_selection_switches_from_remote_to_local_directory() {
     let local_sub = root.join("local_folder");
     std::fs::create_dir(&local_sub).unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
     app.ui_state.ui_show_tree = true;
 
@@ -441,6 +450,7 @@ fn fuzzy_search_shortcuts_and_post_selection_navigation() {
     std::fs::write(&file_b, "fn beta() {}\n").unwrap();
     std::fs::write(&file_c, "fn gamma() {}\n").unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
 
     // 1. Ctrl+P triggers FuzzyFindFile
@@ -498,6 +508,7 @@ fn viewer_search_and_navigation_workflow() {
     let content = "line 0: alpha\nline 1: beta target\nline 2: gamma\nline 3: delta target\nline 4: epsilon\n";
     std::fs::write(&sample, content).unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root);
     // Open sample.txt in built-in viewer
     app.handle_key_event(key(KeyCode::Enter));
@@ -592,6 +603,7 @@ fn large_markdown_file_open_in_viewer_does_not_hang() {
     let content = "# Title\n\n- Bullet point explaining spec-driven development.\n```rust\nfn code() {}\n```\n".repeat(4000);
     std::fs::write(&md_path, &content).unwrap();
 
+    common::isolate_config();
     let mut app = AppState::new(root.to_path_buf());
     // Move cursor to the markdown file and press Enter
     app.handle_key_event(key(KeyCode::Enter));

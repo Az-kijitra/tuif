@@ -1293,7 +1293,12 @@ fn draw_connection_edit_modal(
     let popup = Rect::new(x, y, width, height);
     frame.render_widget(Clear, popup);
 
-    let port_str = profile.port.to_string();
+    // 0 means "not entered yet"; it is saved as the default port 22.
+    let port_str = if profile.port == 0 {
+        String::new()
+    } else {
+        profile.port.to_string()
+    };
     let pw_masked = "*".repeat(password_buffer.len());
     let save_str = if profile.save_password {
         "[✓] Yes (Space to toggle)"

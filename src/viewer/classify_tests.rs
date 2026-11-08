@@ -102,7 +102,7 @@ fn r412_ac422_a_sample_that_never_saw_the_nul_stays_text() {
 fn r412_1_and_2_ratio_exactly_10_percent_is_text_not_over() {
     // AC-423: exactly 10% control-byte ratio is still text ("超える" = strictly >).
     let mut sample = vec![b'a'; 90];
-    sample.extend(std::iter::repeat(0x01u8).take(10)); // 0x01 is a control byte (R-412-1)
+    sample.extend(std::iter::repeat_n(0x01u8, 10)); // 0x01 is a control byte (R-412-1)
     assert_eq!(sample.len(), 100);
     assert!(content_is_text(&sample));
 }
@@ -110,7 +110,7 @@ fn r412_1_and_2_ratio_exactly_10_percent_is_text_not_over() {
 #[test]
 fn r412_1_and_2_ratio_over_10_percent_is_binary() {
     let mut sample = vec![b'a'; 89];
-    sample.extend(std::iter::repeat(0x01u8).take(11)); // 11% > 10%
+    sample.extend(std::iter::repeat_n(0x01u8, 11)); // 11% > 10%
     assert_eq!(sample.len(), 100);
     assert!(!content_is_text(&sample));
 }

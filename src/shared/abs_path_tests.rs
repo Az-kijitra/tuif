@@ -278,7 +278,7 @@ fn first_relative_returns_the_first_offender_in_order() {
 
 #[test]
 fn first_relative_accepts_any_iterator_of_str() {
-    let owned = vec![r"C:\a".to_string(), "rel".to_string()];
+    let owned = [r"C:\a".to_string(), "rel".to_string()];
     assert_eq!(
         first_relative(owned.iter().map(String::as_str)),
         Some("rel")

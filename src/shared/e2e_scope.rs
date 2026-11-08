@@ -268,19 +268,6 @@ pub fn check_external_launch(path: &Path) -> Result<(), ScopeViolation> {
     with_scope(|s| s.check_external_launch(path))
 }
 
-/// SPEC-0200-0001 §3.12.9 AC-88 / MINOR-11 (unit-test-writer): a `#[cfg(test)]` thread-local scope
-/// override, OUTSIDE `mod imp`. `ScopeGuard::drop` always restores the previous value, so a test
-/// never leaks a scope into another test (even with `--test-threads=1`, which reuses threads).
-#[cfg(test)]
-mod test_override {
-    use super::Scope;
-    use std::cell::RefCell;
-
-    thread_local! {
-        pub(super) static TEST_SCOPE: RefCell<Option<Scope>> = const { RefCell::new(None) };
-    }
-}
-
 /// Restores the previous thread-local scope on drop.
 #[cfg(test)]
 pub struct ScopeGuard {
@@ -300,4 +287,17 @@ impl Drop for ScopeGuard {
 pub fn set_test_scope(scope: Scope) -> ScopeGuard {
     let previous = test_override::TEST_SCOPE.with(|cell| cell.replace(Some(scope)));
     ScopeGuard { previous }
+}
+
+/// SPEC-0200-0001 §3.12.9 AC-88 / MINOR-11 (unit-test-writer): a `#[cfg(test)]` thread-local scope
+/// override, OUTSIDE `mod imp`. `ScopeGuard::drop` always restores the previous value, so a test
+/// never leaks a scope into another test (even with `--test-threads=1`, which reuses threads).
+#[cfg(test)]
+mod test_override {
+    use super::Scope;
+    use std::cell::RefCell;
+
+    thread_local! {
+        pub(super) static TEST_SCOPE: RefCell<Option<Scope>> = const { RefCell::new(None) };
+    }
 }

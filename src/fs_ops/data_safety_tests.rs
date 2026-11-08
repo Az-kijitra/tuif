@@ -25,7 +25,11 @@ fn ac78_copy_overwrite_into_the_same_dir_with_different_case_keeps_the_source() 
     let a = write(root.path(), "photos/a.txt", "PRECIOUS");
     let dest_upper = with_last_component_uppercased(&root.path().join("photos"));
 
-    let summary = copy_batch(&[a.clone()], &dest_upper, ConflictResolution::Overwrite);
+    let summary = copy_batch(
+        std::slice::from_ref(&a),
+        &dest_upper,
+        ConflictResolution::Overwrite,
+    );
 
     assert_eq!(read(&a), "PRECIOUS", "the source must survive");
     assert_eq!(
@@ -43,7 +47,11 @@ fn ac78_move_overwrite_into_the_same_dir_with_different_case_keeps_the_source() 
     let a = write(root.path(), "photos/a.txt", "PRECIOUS");
     let dest_upper = with_last_component_uppercased(&root.path().join("photos"));
 
-    let summary = move_batch(&[a.clone()], &dest_upper, ConflictResolution::Overwrite);
+    let summary = move_batch(
+        std::slice::from_ref(&a),
+        &dest_upper,
+        ConflictResolution::Overwrite,
+    );
 
     assert_eq!(read(&a), "PRECIOUS");
     assert_eq!((summary.skipped, summary.failed), (1, 0), "{summary:?}");
@@ -75,7 +83,11 @@ fn ac79_copy_overwrite_via_a_junction_to_the_same_dir_keeps_the_source() {
         "test setup: could not create a directory link"
     );
 
-    let summary = copy_batch(&[a.clone()], &link, ConflictResolution::Overwrite);
+    let summary = copy_batch(
+        std::slice::from_ref(&a),
+        &link,
+        ConflictResolution::Overwrite,
+    );
 
     remove_dir_link(&link);
     assert_eq!(read(&a), "PRECIOUS");
@@ -97,7 +109,11 @@ fn ac79_move_overwrite_via_a_junction_to_the_same_dir_keeps_the_source() {
         "test setup: could not create a directory link"
     );
 
-    let summary = move_batch(&[a.clone()], &link, ConflictResolution::Overwrite);
+    let summary = move_batch(
+        std::slice::from_ref(&a),
+        &link,
+        ConflictResolution::Overwrite,
+    );
 
     remove_dir_link(&link);
     assert_eq!(read(&a), "PRECIOUS");
@@ -149,7 +165,7 @@ fn ac81_copy_overwrite_of_an_ancestor_is_refused_and_nothing_changes() {
     let before_foo = names(&root.path().join("X/foo"));
 
     let summary = copy_batch(
-        &[inner.clone()],
+        std::slice::from_ref(&inner),
         &root.path().join("X"),
         ConflictResolution::Overwrite,
     );
@@ -177,7 +193,7 @@ fn ac81_move_overwrite_of_an_ancestor_is_refused_and_the_source_remains() {
     write(root.path(), "X/foo/sibling.txt", "sibling");
 
     let summary = move_batch(
-        &[inner.clone()],
+        std::slice::from_ref(&inner),
         &root.path().join("X"),
         ConflictResolution::Overwrite,
     );
@@ -221,7 +237,11 @@ fn ac81_ancestor_is_recognised_through_a_junction_alias_of_the_destination() {
         "test setup: could not create a directory link"
     );
 
-    let summary = copy_batch(&[inner.clone()], &alias, ConflictResolution::Overwrite);
+    let summary = copy_batch(
+        std::slice::from_ref(&inner),
+        &alias,
+        ConflictResolution::Overwrite,
+    );
 
     remove_dir_link(&alias);
     assert_eq!(read(&inner), "PRECIOUS");
@@ -341,7 +361,7 @@ fn m1_reject_with_an_ancestor_source_reports_overwrite_ancestor() {
     let before_foo = names(&root.path().join("X/foo"));
 
     let summary = copy_batch(
-        &[inner.clone()],
+        std::slice::from_ref(&inner),
         &root.path().join("X"),
         ConflictResolution::Reject,
     );

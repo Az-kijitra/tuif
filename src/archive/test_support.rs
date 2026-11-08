@@ -228,5 +228,5 @@ pub fn code_of(result: &Result<ExtractResult, ArchiveError>) -> Option<ArchiveEr
 
 /// UTF-16 length helper for building long-path fixtures.
 pub fn repeat_char(c: char, n: usize) -> String {
-    std::iter::repeat(c).take(n).collect()
+    std::iter::repeat_n(c, n).collect()
 }

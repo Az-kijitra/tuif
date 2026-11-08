@@ -117,7 +117,7 @@ mod tests {
         let target = dir.path().join("a.txt");
         fs::write(&target, b"1").expect("write target");
 
-        let summary = delete_to_trash(&[target.clone()]);
+        let summary = delete_to_trash(std::slice::from_ref(&target));
 
         assert_eq!(summary.ok, 1);
         assert!(!target.exists());
@@ -187,7 +187,7 @@ mod tests {
         let target = dir.path().join("a.txt");
         fs::write(&target, b"1").expect("write target");
 
-        let summary = delete_permanently(&[target.clone()]);
+        let summary = delete_permanently(std::slice::from_ref(&target));
 
         assert_eq!(summary.ok, 1);
         assert!(!target.exists());

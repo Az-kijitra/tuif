@@ -736,7 +736,7 @@ fn ac373_data_larger_than_the_declared_size_is_zip_corrupt() {
     assert!(!c.dest.join("big.txt").exists());
     let oversized: Vec<String> = tree(&c.dest)
         .into_iter()
-        .filter(|(_, v)| v.as_ref().map_or(false, |b| b.len() > 3))
+        .filter(|(_, v)| v.as_ref().is_some_and(|b| b.len() > 3))
         .map(|(k, _)| k)
         .collect();
     assert!(
@@ -1330,7 +1330,7 @@ fn r346_2_new_directories_are_stamped_after_their_children_and_existing_ones_not
         .expect("file stamped");
     let d = calls
         .iter()
-        .position(|p| p.file_name().map_or(false, |n| n == "new"))
+        .position(|p| p.file_name().is_some_and(|n| n == "new"))
         .expect("new directory stamped");
     assert!(
         f < d,
@@ -1343,7 +1343,7 @@ fn r346_2_new_directories_are_stamped_after_their_children_and_existing_ones_not
     assert!(
         !calls
             .iter()
-            .any(|p| p.file_name().map_or(false, |n| n == "pre")),
+            .any(|p| p.file_name().is_some_and(|n| n == "pre")),
         "an existing directory must not be re-dated: {calls:?}"
     );
 }

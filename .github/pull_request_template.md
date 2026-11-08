@@ -3,7 +3,7 @@
 
 ## 確認したこと
 - [ ] `cargo fmt --check`
-- [ ] `cargo clippy -- -D warnings`
+- [ ] `cargo clippy --all-targets -- -D warnings`
 - [ ] `cargo test`
 - [ ] 利用者から見える変更は `CHANGELOG.md` の `[Unreleased]` に追記した
 - [ ] (インストーラーを変更した場合) サンドボックスなどで install.ps1 / uninstall.ps1 を実行して確認した

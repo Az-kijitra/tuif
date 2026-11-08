@@ -51,7 +51,7 @@ cargo test
 | パス | 役割 |
 |---|---|
 | `src/main.rs` | コマンドライン引数の処理、ターミナルの初期化、イベントループ |
-| `src/app/` | アプリの状態 (`AppState`) と操作の処理。`keyboard.rs` / `mouse.rs` が入力、`actions.rs` がアクションの実行、`paste.rs` と `paste/`（経路別: `local.rs` / `download.rs` / `upload.rs`）がコピー・移動、`navigation.rs` / `tree.rs` / `remote.rs` が移動とツリーと SFTP |
+| `src/app/` | アプリの状態 (`AppState`) と操作の処理。`keyboard.rs` / `mouse.rs` が入力、`actions.rs` と `actions/` がアクションの実行と外部アプリの起動、`paste.rs` と `paste/`（経路別: `local.rs` / `download.rs` / `upload.rs`）がコピー・移動、`navigation.rs` / `tree.rs` / `remote.rs` が移動とツリーと SFTP |
 | `src/tui/` | 画面の描画（Ratatui） |
 | `src/keymap/` | キー割り当てとアクション ID |
 | `src/config/` | `config.toml`・UI 状態・履歴の読み書き、設定テンプレート |

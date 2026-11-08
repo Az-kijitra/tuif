@@ -27,6 +27,7 @@ use crate::shared::schema::navigation::NavigationData;
 use crate::shared::schema::ui_state::UiStateData;
 use crate::viewer::{classify, text};
 mod actions;
+mod connection_keys;
 mod keyboard;
 mod menus;
 mod mouse;
@@ -35,6 +36,7 @@ mod paste;
 mod remote;
 mod tree;
 mod types;
+mod viewer_keys;
 
 pub use types::*;
 

@@ -389,7 +389,7 @@ tf C:\Users\username\Projects
 #### プロファイル設定項目
 - **Profile Name**: 一覧やツリーに表示する任意の表示名 (例: `Ubuntu VM`)
 - **Host / IP**: 接続先サーバーのホスト名または IP アドレス
-- **Port**: SSH/SFTP ポート番号 (既定: `22`)
+- **Port**: SSH/SFTP ポート番号（空欄のまま保存すると `22`。変更するときは `Backspace` で消してから入力）
 - **Username**: ログインユーザー名
 - **Password**: ログインパスワード (手入力。保存しない場合は空欄で接続時にプロンプト入力)
 - **Save Password**: Windows 資格情報マネージャー (`Windows Credential Manager`) にパスワードを暗号化保存するかどうかの切り替え (`Space` キーでトグル)

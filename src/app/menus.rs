@@ -150,7 +150,7 @@ impl AppState {
                 if !trimmed.is_empty() {
                     match self.target_destination() {
                         TargetDestination::Local(dest_dir) => {
-                            match create::create_entry(&dest_dir, trimmed, "dir") {
+                            match create::create_entry(&dest_dir, trimmed, "folder") {
                                 Ok(()) => {
                                     self.expanded_dirs.insert(normalize_tree_key(&dest_dir));
                                     self.reload_dir();

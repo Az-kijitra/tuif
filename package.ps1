@@ -34,7 +34,7 @@ if (-not $Version) {
 }
 
 if (-not $Version) {
-    $Version = "0.1.0"
+    throw "Could not read the version from Cargo.toml. Pass -Version explicitly."
 }
 
 Write-Host "Target Version: v$Version" -ForegroundColor Yellow

@@ -127,6 +127,48 @@ pub fn default_external_apps() -> Vec<ExternalAppEntry> {
     ]
 }
 
+/// Merges `[[external_apps]]` entries from `config.toml` into the built-in list.
+///
+/// - An entry whose `name` matches a built-in tool (case-insensitive) replaces it in place.
+/// - Any other entry is appended in file order.
+/// - An entry with an invalid `key_chord` is still registered (reachable from the action menu)
+///   but without a hotkey; a note for it is returned in the second element.
+pub fn merge_user_apps(
+    mut apps: Vec<ExternalAppEntry>,
+    user: &[crate::config::config_toml::RawExternalApp],
+) -> (Vec<ExternalAppEntry>, Vec<String>) {
+    let mut notes = Vec::new();
+    for raw in user {
+        let (key, key_label) = match raw.key_chord.as_deref().map(str::trim) {
+            None | Some("") => (None, String::new()),
+            Some(spec) => match KeyChord::parse_list(spec) {
+                Ok(chords) => (Some(chords), spec.to_string()),
+                Err(e) => {
+                    notes.push(format!("{}: invalid key_chord \"{spec}\" ({e})", raw.name));
+                    (None, String::new())
+                }
+            },
+        };
+        let entry = ExternalAppEntry {
+            name: raw.name.clone(),
+            program: raw.program.clone(),
+            args: raw.args.clone(),
+            args_for_file: raw.args_for_file.clone(),
+            key,
+            key_label,
+            is_gui: raw.is_gui,
+        };
+        match apps
+            .iter_mut()
+            .find(|a| a.name.eq_ignore_ascii_case(&raw.name))
+        {
+            Some(existing) => *existing = entry,
+            None => apps.push(entry),
+        }
+    }
+    (apps, notes)
+}
+
 /// Substitutes `{path}`, `{dir}`, `{{`, `}}` in a single argument template (SPEC-0300-0021 R-1520).
 pub fn expand_arg(template: &str, target: &LaunchTarget) -> Result<String, String> {
     let mut out = String::new();
@@ -795,6 +837,51 @@ mod tests {
         assert!(apps[4].is_gui);
         assert_eq!(apps[5].program, "explorer.exe");
         assert!(apps[5].is_gui);
+    }
+
+    fn raw(
+        name: &str,
+        program: &str,
+        key: Option<&str>,
+    ) -> crate::config::config_toml::RawExternalApp {
+        crate::config::config_toml::RawExternalApp {
+            name: name.to_string(),
+            program: program.to_string(),
+            args: vec!["{path}".to_string()],
+            args_for_file: None,
+            key_chord: key.map(str::to_string),
+            is_gui: true,
+        }
+    }
+
+    #[test]
+    fn merge_appends_new_apps_with_hotkey() {
+        let user = [raw("Notepad++", "notepad++.exe", Some("Ctrl+Alt+N"))];
+        let (apps, notes) = merge_user_apps(default_external_apps(), &user);
+        assert!(notes.is_empty());
+        assert_eq!(apps.len(), 7);
+        let added = apps.last().unwrap();
+        assert_eq!(added.program, "notepad++.exe");
+        assert_eq!(added.key, KeyChord::parse_list("Ctrl+Alt+N").ok());
+        assert_eq!(added.key_label, "Ctrl+Alt+N");
+    }
+
+    #[test]
+    fn merge_replaces_builtin_with_same_name_in_place() {
+        let user = [raw("open vscode", "code-insiders.exe", Some("Ctrl+Alt+O"))];
+        let (apps, _) = merge_user_apps(default_external_apps(), &user);
+        assert_eq!(apps.len(), 6);
+        assert_eq!(apps[4].program, "code-insiders.exe");
+    }
+
+    #[test]
+    fn merge_keeps_app_without_hotkey_when_key_chord_is_invalid() {
+        let user = [raw("Broken", "x.exe", Some("Ctrl+NoSuchKey"))];
+        let (apps, notes) = merge_user_apps(default_external_apps(), &user);
+        assert_eq!(apps.len(), 7);
+        assert_eq!(apps[6].key, None);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].contains("Broken"));
     }
 
     #[test]

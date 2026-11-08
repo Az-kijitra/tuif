@@ -20,6 +20,13 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Check tag matches Cargo.toml version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $ver = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $ver) { throw "Tag v$tag does not match Cargo.toml version $ver" }
+
       - name: Build & Package Release ZIP
         shell: pwsh
         run: |
@@ -32,4 +39,7 @@ jobs:
           files: |
             dist/tuif-*.zip
             dist/tuif-*.zip.sha256
-            target/release/tuif.exe
+            dist/tuif.exe
+            dist/tuif.exe.sha256
+            install.ps1
+            uninstall.ps1

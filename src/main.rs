@@ -26,6 +26,7 @@ struct CliArgs {
     show_version: bool,
     open_config: bool,
     open_config_dir: bool,
+    init_config: bool,
 }
 
 fn parse_args() -> CliArgs {
@@ -35,6 +36,7 @@ fn parse_args() -> CliArgs {
     let mut show_version = false;
     let mut open_config = false;
     let mut open_config_dir = false;
+    let mut init_config = false;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -43,6 +45,7 @@ fn parse_args() -> CliArgs {
             "-V" | "--version" => show_version = true,
             "-c" | "--config" => open_config = true,
             "--config-dir" => open_config_dir = true,
+            "--init-config" => init_config = true,
             "--choosedir" | "--cwd-file" => {
                 if let Some(p) = args.next() {
                     choosedir_file = Some(PathBuf::from(p));
@@ -65,6 +68,7 @@ fn parse_args() -> CliArgs {
         show_version,
         open_config,
         open_config_dir,
+        init_config,
     }
 }
 
@@ -90,9 +94,22 @@ fn main() -> io::Result<()> {
         println!("Options:");
         println!("  -c, --config         Open config.toml in default text editor");
         println!("  --config-dir         Open configuration directory in File Explorer");
+        println!(
+            "  --init-config        Create config.toml from the template if it does not exist"
+        );
         println!("  --choosedir <FILE>   Write the last visited directory to <FILE> on exit");
         println!("  -h, --help           Print help");
         println!("  -V, --version        Print version");
+        return Ok(());
+    }
+
+    if cli.init_config {
+        let cfg_path = tuif::config::paths::config_path()?;
+        if tuif::config::default_config::write_if_missing(&cfg_path)? {
+            println!("Created {}", cfg_path.display());
+        } else {
+            println!("Already exists: {}", cfg_path.display());
+        }
         return Ok(());
     }
 
@@ -112,45 +129,8 @@ fn main() -> io::Result<()> {
 
     if cli.open_config {
         let cfg_path = tuif::config::paths::config_path()?;
-        if !cfg_path.exists() {
-            let template = r#"# ==============================================================================
-# tuif configuration file (%APPDATA%\tuif\config.toml)
-# Documentation: https://github.com/Az-kijitra/tuif/blob/master/docs/user_manual.md
-# ==============================================================================
-
-# UI Theme: "default", "nord", "monokai", "catppuccin", "solarized_dark", "light"
-theme = "default"
-
-[general]
-confirm_delete = true
-
-[layout]
-show_tree = true
-show_hidden = false
-show_size = true
-show_time = true
-# Icon theme: "nerd" (Nerd Font, recommended), "unicode" (emojis), "ascii" (symbols), "none"
-icons = "nerd"
-
-# Custom keybindings
-[input_keymap_custom]
-# Example:
-# open = "Enter"
-# copy = "y, Ctrl+C"
-
-# ------------------------------------------------------------------------------
-# External Applications ([[external_apps]])
-# Placeholders: {path} = selected item full path, {dir} = current folder path
-# is_gui: true = launch in background, false = suspend TUI and run in foreground
-# ------------------------------------------------------------------------------
-# [[external_apps]]
-# name = "Run Python Script"
-# program = "python.exe"
-# args = ["C:\\path\\to\\script.py", "{path}"]
-# key_chord = "Ctrl+Alt+P"
-# is_gui = false
-"#;
-            let _ = fs::write(&cfg_path, template);
+        if let Err(e) = tuif::config::default_config::write_if_missing(&cfg_path) {
+            eprintln!("Could not create {}: {e}", cfg_path.display());
         }
         println!("Opening config file: {}", cfg_path.display());
         if let Ok(editor) = env::var("EDITOR") {

@@ -1,0 +1,57 @@
+# ==============================================================================
+# tuif configuration file (%APPDATA%\tuif\config.toml)
+# Documentation: https://github.com/Az-kijitra/tuif/blob/master/docs/user_manual.md
+#
+# Every setting below is optional. Delete or comment out a line to use the default.
+# Changes take effect the next time tuif starts.
+# ==============================================================================
+
+# UI theme: "default", "nord", "monokai", "catppuccin", "solarized-dark", "light"
+theme = "default"
+
+[general]
+# Ask for confirmation before deleting
+confirm_delete = true
+# d / Delete moves to the Recycle Bin (true) or deletes permanently (false)
+delete_to_trash = true
+# List folders before files
+dirs_first = false
+# Sort "file2" before "file10"
+natural_sort = true
+# Lines kept visible above/below the cursor while scrolling (0-20)
+scroll_offset = 2
+
+[layout]
+# Width of the Drives / Tree pane in percent of the screen (10-50)
+tree_width_percent = 24
+# Minimum width of one file-list column (10-80)
+min_col_width = 24
+# Modified-time column format
+time_format = "%Y/%m/%d %H:%M"
+# Icon theme: "nerd" (Nerd Font, recommended), "unicode" (emoji), "ascii", "none"
+icons = "nerd"
+
+# Override individual colors on top of the theme.
+# Values: color names ("cyan", "dark_gray", ...), 256-color index ("0"-"255"), or "#RRGGBB".
+# [colors]
+# border = "#88c0d0"
+# cursor_bg = "blue"
+
+# Custom keybindings: action_id = "Key, AnotherKey"
+# The full list of action IDs is in the user manual (section 3.1).
+[keymap]
+# open = "Enter"
+# copy = "y, Ctrl+C"
+
+# ------------------------------------------------------------------------------
+# External applications ([[external_apps]])
+# An entry with the same name as a built-in tool replaces it; others are added.
+# Placeholders: {path} = selected item full path, {dir} = current folder path
+# is_gui: true = launch in background, false = suspend tuif and run in foreground
+# ------------------------------------------------------------------------------
+# [[external_apps]]
+# name = "Run Python Script"
+# program = "python.exe"
+# args = ["{path}"]
+# key_chord = "Ctrl+Alt+P"
+# is_gui = false

@@ -114,15 +114,17 @@ Website: https://github.com/Az-kijitra/tuif
   tuif --config-dir  設定フォルダ (%APPDATA%\tuif) をエクスプローラーで開く
 
 [主なキー操作 / Keybindings]
-  j / k (↓ / ↑)      カーソル移動
-  h / l (← / →)      親ディレクトリへ / ディレクトリを開く
-  Enter              ファイルを開く (関連付けられたアプリで起動)
+  h / j / k / l      カーソル移動 (← ↓ ↑ →)
+  Enter              フォルダを開く / ファイルを内蔵ビューアで表示
+  o                  Windows の既定のアプリで開く
+  Backspace          親フォルダへ
   Space              選択マーク切り替え
-  /                  ファイル検索
+  /                  絞り込み検索
+  y / x / p          コピー / 切り取り / 貼り付け (エクスプローラーと相互にコピペ可能)
   d                  削除 (ごみ箱へ移動)
-  Ctrl+C / Ctrl+V    Windows エクスプローラー連携のコピー / 貼り付け
-  ?                  ヘルプ表示
-  q                  終了
+  ;  または F9       アクションメニュー
+  F10                メニューバー
+  q                  終了 (Ctrl+Q: 終了してそのフォルダへ cd)
 
 [アンインストール / Uninstallation]
   PowerShell で以下を実行します:
@@ -142,7 +144,13 @@ Compress-Archive -Path "$StagingDir\*" -DestinationPath $ZipPath -Force
 # 7. Generate SHA256 checksum
 Write-Host "[4/4] Calculating SHA256 checksum..." -ForegroundColor Green
 $Hash = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLower()
-Set-Content -Path $ShaPath -Value "$Hash  $ArchiveBase.zip" -Encoding UTF8
+Set-Content -Path $ShaPath -Value "$Hash  $ArchiveBase.zip" -Encoding Ascii
+
+# Standalone binary + checksum for the `irm | iex` installer (it verifies tuif.exe.sha256)
+$DistExe = Join-Path $OutputDir "tuif.exe"
+Copy-Item -Path $ExePath -Destination $DistExe -Force
+$ExeHash = (Get-FileHash -Path $DistExe -Algorithm SHA256).Hash.ToLower()
+Set-Content -Path "$DistExe.sha256" -Value "$ExeHash  tuif.exe" -Encoding Ascii
 
 # Clean up staging directory
 Remove-Item -Path $StagingDir -Recurse -Force

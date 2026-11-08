@@ -20,6 +20,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
       - name: Check Formatting
         run: cargo fmt --check
 
@@ -28,3 +31,14 @@ jobs:
 
       - name: Run Tests
         run: cargo test
+
+      - name: Release Build
+        run: cargo build --release
+
+      - name: Lint PowerShell scripts
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          $issues = 'install.ps1', 'uninstall.ps1', 'package.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error }
+          $issues | Format-Table -AutoSize
+          if ($issues) { throw "PSScriptAnalyzer found $($issues.Count) error(s)" }

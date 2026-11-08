@@ -1,4 +1,4 @@
-# `tuif` ユーザーマニュアル (0.1.1)
+# `tuif` ユーザーマニュアル (0.1.2)
 
 `tuif` は、Windows PowerShell 環境で動作するキーボード主体 (Vim-like) かつ Windows エクスプローラー互換のマウス操作・SFTP リモート接続（WinSCP ライク機能）を備えた CUI/TUI ファイラーです。
 

@@ -40,7 +40,7 @@ CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）と同じチェッ�
 
 ```powershell
 cargo fmt --check
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 

@@ -970,7 +970,7 @@ mod tests {
         write_file(&source_dir, "top.txt", b"1");
 
         let summary = copy_batch(
-            &[source_dir.clone()],
+            std::slice::from_ref(&source_dir),
             &nested_destination,
             ConflictResolution::Reject,
         );
@@ -1047,7 +1047,11 @@ mod tests {
         fs::create_dir(&destination).expect("create destination");
         let source = write_file(dir.path(), "a.txt", b"hello");
 
-        let summary = copy_batch(&[source.clone()], &destination, ConflictResolution::Reject);
+        let summary = copy_batch(
+            std::slice::from_ref(&source),
+            &destination,
+            ConflictResolution::Reject,
+        );
 
         assert_eq!(summary.ok, 1);
         assert_eq!(summary.failed, 0);
@@ -1067,7 +1071,11 @@ mod tests {
         fs::create_dir(&destination).expect("create destination");
         let source = write_file(dir.path(), "a.txt", b"hello");
 
-        let summary = move_batch(&[source.clone()], &destination, ConflictResolution::Reject);
+        let summary = move_batch(
+            std::slice::from_ref(&source),
+            &destination,
+            ConflictResolution::Reject,
+        );
 
         assert_eq!(summary.ok, 1);
         assert_eq!(summary.failed, 0);
@@ -1094,7 +1102,7 @@ mod tests {
         fs::write(source_dir.join("nested").join("deep.txt"), b"2").expect("write deep.txt");
 
         let summary = copy_batch(
-            &[source_dir.clone()],
+            std::slice::from_ref(&source_dir),
             &destination,
             ConflictResolution::Reject,
         );
@@ -1515,7 +1523,7 @@ mod tests {
 
         let mut events: Vec<ProgressEvent> = Vec::new();
         let summary = copy_batch_with_progress(
-            &[a.clone()],
+            std::slice::from_ref(&a),
             &destination,
             ConflictResolution::Reject,
             || true,

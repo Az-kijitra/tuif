@@ -30,7 +30,7 @@ fn ac20_1_copy_overwrite_merges_folders_and_keeps_destination_only_files() {
     write(root.path(), "dest/d/sub/deep_both.txt", "OLD-DEEP");
 
     let summary = copy_batch(
-        &[src.clone()],
+        std::slice::from_ref(&src),
         &root.path().join("dest"),
         ConflictResolution::Overwrite,
     );
@@ -124,7 +124,7 @@ fn r31_5_move_file_overwrite_replaces_destination_and_removes_source_without_lef
     write(root.path(), "dest/a.txt", "OLD");
 
     let summary = move_batch(
-        &[a.clone()],
+        std::slice::from_ref(&a),
         &root.path().join("dest"),
         ConflictResolution::Overwrite,
     );
@@ -267,7 +267,7 @@ fn r31_4_move_with_kind_mismatch_keeps_both_source_and_destination() {
     write(root.path(), "dest/x/precious.txt", "precious");
 
     let summary = move_batch(
-        &[file_item.clone()],
+        std::slice::from_ref(&file_item),
         &root.path().join("dest"),
         ConflictResolution::Overwrite,
     );
@@ -341,6 +341,8 @@ fn ac20_4_a_replace_failure_keeps_the_original_destination_file() {
 
     // make the temp dir removable again before asserting
     let mut perms = std::fs::metadata(&locked).unwrap().permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    // Windows: only clears the read-only attribute
     perms.set_readonly(false);
     std::fs::set_permissions(&locked, perms).unwrap();
 

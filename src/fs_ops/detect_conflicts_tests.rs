@@ -123,7 +123,7 @@ fn detection_has_no_side_effects() {
     let before_src = names(&root.path().join("src"));
     let before_dest = names(&root.path().join("dest"));
 
-    let _ = detect_conflicts(&[a.clone()], &root.path().join("dest"));
+    let _ = detect_conflicts(std::slice::from_ref(&a), &root.path().join("dest"));
 
     assert_eq!(names(&root.path().join("src")), before_src);
     assert_eq!(names(&root.path().join("dest")), before_dest);
@@ -139,7 +139,7 @@ fn destination_missing_or_not_a_directory_is_an_error_with_preflight_codes() {
     let file_dest = write(root.path(), "not_a_dir.txt", "x");
 
     assert_eq!(
-        detect_conflicts(&[a.clone()], &root.path().join("missing")).unwrap_err(),
+        detect_conflicts(std::slice::from_ref(&a), &root.path().join("missing")).unwrap_err(),
         TransferPreflightError::DestinationNotFound
     );
     assert_eq!(
@@ -214,7 +214,8 @@ fn ac81_source_beneath_the_conflicting_destination_item_is_overwrite_ancestor() 
         .unwrap()
         .to_path_buf(); // X/foo/foo (dir)
 
-    let conflicts = detect_conflicts(&[inner.clone()], &root.path().join("X")).expect("ok");
+    let conflicts =
+        detect_conflicts(std::slice::from_ref(&inner), &root.path().join("X")).expect("ok");
 
     assert_eq!(conflicts.len(), 1);
     assert_eq!(conflicts[0].path, inner);

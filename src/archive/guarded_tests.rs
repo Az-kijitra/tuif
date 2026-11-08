@@ -257,7 +257,7 @@ fn ac387_a_missing_absolute_item_is_still_not_found() {
     let w = world();
     let missing = s(&w.u.path().join("nope.txt"));
     assert_eq!(
-        check(&w, &[missing.clone()], "out.zip", &w.base()),
+        check(&w, std::slice::from_ref(&missing), "out.zip", &w.base()),
         "not_found"
     );
     assert_eq!(create(&[missing], "out.zip", &w.base()), "not_found");
@@ -527,7 +527,7 @@ fn ac391_slashes_in_items_zip_path_or_base_dir_are_not_converted_and_are_refused
     let slashed_base = w.base().replace('\\', "/");
     let slashed_zip = w.zip().replace('\\', "/");
     assert_eq!(
-        create(&[slashed_a.clone()], "out.zip", &w.base()),
+        create(std::slice::from_ref(&slashed_a), "out.zip", &w.base()),
         INVALID,
         "items"
     );
@@ -564,7 +564,7 @@ fn ac88_with_a_scope_active_relative_inputs_are_invalid_path_not_a_scope_violati
     let _scope = set_test_scope(Scope::new(fs::canonicalize(w.v.path()).unwrap())); // U is OUTSIDE the scope
     let rel = w.rand.clone();
     assert_eq!(
-        create(&[rel.clone()], "out.zip", &w.base()),
+        create(std::slice::from_ref(&rel), "out.zip", &w.base()),
         INVALID,
         "create items"
     );
@@ -574,7 +574,7 @@ fn ac88_with_a_scope_active_relative_inputs_are_invalid_path_not_a_scope_violati
         "create base_dir"
     );
     assert_eq!(
-        check(&w, &[rel.clone()], "out.zip", &w.base()),
+        check(&w, std::slice::from_ref(&rel), "out.zip", &w.base()),
         INVALID,
         "check items"
     );

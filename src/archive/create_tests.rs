@@ -200,7 +200,7 @@ fn ac321_3_a_drive_root_item_has_no_archive_name_and_is_invalid_path() {
         return;
     }
     assert_eq!(
-        check_create(&[root.clone()], "out.zip", &c.work)
+        check_create(std::slice::from_ref(&root), "out.zip", &c.work)
             .unwrap_err()
             .code,
         Code::InvalidPath
@@ -219,7 +219,7 @@ fn ac321_3_an_existing_directory_at_the_output_path_is_already_exists() {
     let item = write_file(&c.src, "a.txt", b"a");
     fs::create_dir(c.work.join("out.zip")).unwrap();
     assert_eq!(
-        check_create(&[item.clone()], "out.zip", &c.work)
+        check_create(std::slice::from_ref(&item), "out.zip", &c.work)
             .unwrap_err()
             .code,
         Code::AlreadyExists
@@ -237,7 +237,7 @@ fn r324_1_a_missing_parent_directory_is_destination_not_found() {
     let item = write_file(&c.src, "a.txt", b"a");
     let out = c.work.join("no").join("such").join("out.zip");
     assert_eq!(
-        check_create(&[item.clone()], &out.to_string_lossy(), &c.work)
+        check_create(std::slice::from_ref(&item), &out.to_string_lossy(), &c.work)
             .unwrap_err()
             .code,
         Code::DestinationNotFound
@@ -262,13 +262,13 @@ fn ac321_2_an_output_path_inside_a_source_directory_is_destination_inside_source
     write_file(&docs, "x.txt", b"x");
     let out = docs.join("out.zip");
     assert_eq!(
-        check_create(&[docs.clone()], &out.to_string_lossy(), &c.work)
+        check_create(std::slice::from_ref(&docs), &out.to_string_lossy(), &c.work)
             .unwrap_err()
             .code,
         Code::DestinationInsideSource
     );
     assert_eq!(
-        create(&c, &[docs.clone()], &out.to_string_lossy())
+        create(&c, std::slice::from_ref(&docs), &out.to_string_lossy())
             .unwrap_err()
             .code,
         Code::DestinationInsideSource
@@ -287,7 +287,7 @@ fn r325_an_output_path_identical_to_a_source_file_is_destination_inside_source()
         b"i am a source file that happens to be named like the output",
     );
     let err = create_zip(
-        &[precious.clone()],
+        std::slice::from_ref(&precious),
         &precious.to_string_lossy(),
         &c.work,
         true,
@@ -327,7 +327,7 @@ fn ac321_4_a_letter_case_alias_of_a_source_directory_is_still_inside_it() {
     write_file(&docs, "x.txt", b"x");
     let out = c.src.join("DOCS").join("x.zip");
     assert_eq!(
-        check_create(&[docs.clone()], &out.to_string_lossy(), &c.work)
+        check_create(std::slice::from_ref(&docs), &out.to_string_lossy(), &c.work)
             .unwrap_err()
             .code,
         Code::DestinationInsideSource
@@ -348,13 +348,13 @@ fn ac321_4_a_junction_alias_into_a_source_directory_is_still_inside_it() {
     }
     let out = link.join("x.zip");
     assert_eq!(
-        check_create(&[docs.clone()], &out.to_string_lossy(), &c.work)
+        check_create(std::slice::from_ref(&docs), &out.to_string_lossy(), &c.work)
             .unwrap_err()
             .code,
         Code::DestinationInsideSource
     );
     assert_eq!(
-        create(&c, &[docs.clone()], &out.to_string_lossy())
+        create(&c, std::slice::from_ref(&docs), &out.to_string_lossy())
             .unwrap_err()
             .code,
         Code::DestinationInsideSource
@@ -378,13 +378,13 @@ fn ac321_5_an_output_path_that_is_a_link_is_invalid_path() {
         return;
     }
     assert_eq!(
-        check_create(&[item.clone()], "out.zip", &c.work)
+        check_create(std::slice::from_ref(&item), "out.zip", &c.work)
             .unwrap_err()
             .code,
         Code::InvalidPath
     );
     let err = create_zip(
-        &[item.clone()],
+        std::slice::from_ref(&item),
         "out.zip",
         &c.work,
         true,
@@ -405,7 +405,7 @@ fn ac321_5_an_output_path_that_is_a_link_is_invalid_path() {
     // dangling junction
     assert!(make_dangling_dir_link(&link, &c.work.join("scratch")));
     assert_eq!(
-        check_create(&[item.clone()], "out.zip", &c.work)
+        check_create(std::slice::from_ref(&item), "out.zip", &c.work)
             .unwrap_err()
             .code,
         Code::InvalidPath
@@ -453,14 +453,14 @@ fn ac364_3_a_source_name_with_an_unpaired_surrogate_is_invalid_path() {
     }
     let out = c.work.join("out.zip");
     assert_eq!(
-        create(&c, &[bad.clone()], &out.to_string_lossy())
+        create(&c, std::slice::from_ref(&bad), &out.to_string_lossy())
             .unwrap_err()
             .code,
         Code::InvalidPath,
         "as a top-level item"
     );
     assert_eq!(
-        create(&c, &[dir.clone()], &out.to_string_lossy())
+        create(&c, std::slice::from_ref(&dir), &out.to_string_lossy())
             .unwrap_err()
             .code,
         Code::InvalidPath,
@@ -476,7 +476,7 @@ fn check_create_never_touches_the_filesystem() {
     let item = write_file(&c.src, "a.txt", b"a");
     write_file(&c.work, "exists.zip", b"old zip");
     let before = (tree(&c.work), tree(&c.src));
-    let ok = check_create(&[item.clone()], "fresh", &c.work).unwrap();
+    let ok = check_create(std::slice::from_ref(&item), "fresh", &c.work).unwrap();
     assert_eq!(
         ok,
         CheckedCreate {
@@ -484,7 +484,7 @@ fn check_create_never_touches_the_filesystem() {
             overwrite_required: false
         }
     );
-    let existing = check_create(&[item.clone()], "exists.zip", &c.work).unwrap();
+    let existing = check_create(std::slice::from_ref(&item), "exists.zip", &c.work).unwrap();
     assert!(
         existing.overwrite_required,
         "an existing FILE needs the overwrite confirmation (R-326)"
@@ -527,7 +527,7 @@ fn ac318_a_folder_round_trips_through_create_and_extract() {
     write_file(&docs, "top.txt", b"top");
     write_file(&docs, "sub/deep/x.txt", b"deep");
     fs::create_dir_all(docs.join("empty")).unwrap();
-    created(&c, &[docs.clone()], "docs");
+    created(&c, std::slice::from_ref(&docs), "docs");
     let zip = c.work.join("docs.zip");
     let names = names_of(&zip);
     assert_eq!(
@@ -644,7 +644,7 @@ fn ac321_1_junctions_are_skipped_counted_and_a_cycle_terminates() {
         skip("cannot create junctions/symlinks here");
         return;
     }
-    let r = created(&c, &[src.clone()], "out");
+    let r = created(&c, std::slice::from_ref(&src), "out");
     let names = names_of(&c.work.join("out.zip"));
     assert_eq!(
         names,
@@ -754,6 +754,8 @@ fn ac319_1_modification_times_survive_a_round_trip_and_readonly_is_not_applied()
     );
     // so that the temp dir can be removed
     let mut p = fs::metadata(&file).unwrap().permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    // Windows: only clears the read-only attribute
     p.set_readonly(false);
     fs::set_permissions(&file, p).unwrap();
 }
@@ -776,7 +778,7 @@ fn ac311_check_create_flags_an_existing_file_for_confirmation() {
     let c = ctx();
     let item = write_file(&c.src, "a.txt", b"a");
     assert!(
-        !check_create(&[item.clone()], "fresh.zip", &c.work)
+        !check_create(std::slice::from_ref(&item), "fresh.zip", &c.work)
             .unwrap()
             .overwrite_required
     );

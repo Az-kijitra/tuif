@@ -48,7 +48,7 @@ fn classify_io_error_permission_denied_is_permission_denied() {
 
 #[test]
 fn classify_io_error_everything_else_is_io_error() {
-    let e = io::Error::new(io::ErrorKind::Other, "disk full, or whatever");
+    let e = io::Error::other("disk full, or whatever");
     assert_eq!(classify_io_error(&e), ViewerErrorCode::IoError);
 }
 

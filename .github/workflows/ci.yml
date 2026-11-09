@@ -39,6 +39,6 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
-          $issues = 'install.ps1', 'uninstall.ps1', 'package.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error }
+          $issues = 'install.ps1', 'uninstall.ps1', 'package.ps1', 'tools/New-DemoFolder.ps1', 'tools/Join-Screenshots.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error }
           $issues | Format-Table -AutoSize
           if ($issues) { throw "PSScriptAnalyzer found $($issues.Count) error(s)" }

@@ -65,7 +65,7 @@ PowerShell 上で以下のコマンドを実行してインストールできま
 | `config.toml` | キー割り当て (`[keymap]` / `[input_keymap_custom]`)、テーマ・配色 (`[theme]` / `[colors]`)、動作・レイアウト (`[general]` / `[layout]`)、外部アプリ定義 (`[[external_apps]]`) |
 | `navigation.toml` | 訪問履歴 (`history`) とジャンプリスト (`jump_list`) |
 | `ui-state.toml` | ツリー・隠しファイル・サイズ列・更新日時列の表示状態、ソート条件 |
-| `remote_profiles.toml` | SFTP 接続プロファイル一覧 (接続先ホスト、ポート、ユーザー名、初期ディレクトリ等) |
+| `connections.toml` | SFTP 接続プロファイル一覧 (接続先ホスト、ポート、ユーザー名、初期ディレクトリ等) |
 | `known_hosts.toml` | SFTP 接続先の SSH ホスト鍵 (SHA256 フィンガープリント) キャッシュ |
 
 > **セキュリティについて**: SFTP のログインパスワードを保存する場合、平文の設定ファイルには一切書き込まれず、Windows OS 標準の **Windows 資格情報マネージャー** (`Windows Credential Manager`) 内に暗号化保管されます。

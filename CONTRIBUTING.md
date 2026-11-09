@@ -44,7 +44,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-`install.ps1` / `uninstall.ps1` / `package.ps1` を変更した場合は、CI で [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) のチェックも実行されます。インストーラーはユーザーの PATH と `$PROFILE` を書き換えるので、手元で動かすときは Windows サンドボックスか別のユーザーアカウントを使ってください。
+`install.ps1` / `uninstall.ps1` / `package.ps1` / `tools/*.ps1` を変更した場合は、CI で [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) のチェックも実行されます。インストーラーはユーザーの PATH と `$PROFILE` を書き換えるので、手元で動かすときは Windows サンドボックスか別のユーザーアカウントを使ってください。
 
 ## コードの構成
 
@@ -62,6 +62,7 @@ cargo test
 | `src/external_apps/` | 外部ツールの起動、fzf 連携 |
 | `src/theme/` | テーマと配色 |
 | `tests/` | 結合テスト |
+| `tools/` | 開発用の補助スクリプト（README のスクリーンショット用のダミーフォルダ作成、画像の合成）。手順は [docs/screenshots.md](docs/screenshots.md) |
 
 主なコーディング規約は次のとおりです。全文は [.agents/skills/coding-standards/SKILL.md](.agents/skills/coding-standards/SKILL.md) にあります。
 

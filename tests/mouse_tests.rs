@@ -635,25 +635,71 @@ fn viewer_scrolls_by_three_and_clamps() {
 
 #[test]
 fn viewer_right_click_toggles_markdown_preview() {
+    // The preview comes from the external `leaf.exe`, so build the viewer state directly
+    // instead of depending on it being installed.
     let tmp = tempfile::tempdir().unwrap();
-    let md: String = (1..=30)
-        .map(|i| format!("# Heading {i}\n\ntext\n\n"))
-        .collect();
-    fs::write(tmp.path().join("doc.md"), md).unwrap();
     let mut app = app_in(tmp.path());
-    focus(&mut app, "doc.md");
-    app.execute_action(ActionId::Open);
-    let (preview, _, _) = viewer_state(&app);
-    set_viewer_scroll(&mut app, 4, 7);
+    let raw: Vec<String> = (0..10)
+        .map(|i| format!("raw {i}{}", if i % 3 == 0 { " hit" } else { "" }))
+        .collect();
+    let preview: Vec<String> = vec!["p0".into(), "p1 hit".into(), "p2".into(), "p3".into()];
+    app.overlay = OverlayMode::Viewer {
+        path: tmp.path().join("doc.md"),
+        title: "doc.md".into(),
+        is_markdown: true,
+        preview_mode: false,
+        raw_lines: raw,
+        preview_lines: Some(preview),
+        scroll_y: 8,
+        scroll_x: 7,
+        search_query: Some("hit".into()),
+        search_input: None,
+        matching_lines: vec![0, 3, 6, 9],
+        match_cursor: Some(3),
+    };
 
     mouse(&mut app, RIGHT, 5, 5);
-    let (after, y, x) = viewer_state(&app);
-    assert_eq!(after, !preview);
+    let (mode, y, x) = viewer_state(&app);
+    assert!(mode, "switches to the preview");
+    assert_eq!(y, 3, "scroll clamps to the shorter preview");
     assert_eq!(x, 0, "horizontal scroll resets");
-    assert_eq!(y, 4, "vertical scroll is kept while it fits");
+    match &app.overlay {
+        OverlayMode::Viewer {
+            matching_lines,
+            match_cursor,
+            ..
+        } => {
+            assert_eq!(matching_lines, &vec![1], "search re-runs on the preview");
+            assert_eq!(*match_cursor, Some(0));
+        }
+        other => panic!("unexpected overlay {other:?}"),
+    }
 
+    set_viewer_scroll(&mut app, 2, 5);
     mouse(&mut app, RIGHT, 5, 5);
-    assert_eq!(viewer_state(&app).0, preview);
+    let (mode, y, x) = viewer_state(&app);
+    assert!(!mode, "switches back to the raw text");
+    assert_eq!(y, 2, "scroll is kept while it fits");
+    assert_eq!(x, 0);
+    match &app.overlay {
+        OverlayMode::Viewer {
+            matching_lines,
+            match_cursor,
+            ..
+        } => {
+            assert_eq!(matching_lines, &vec![0, 3, 6, 9]);
+            assert_eq!(*match_cursor, Some(1), "first match at or below the scroll");
+        }
+        other => panic!("unexpected overlay {other:?}"),
+    }
+
+    // Without a rendered preview (no `leaf.exe`), right click does nothing.
+    if let OverlayMode::Viewer { preview_lines, .. } = &mut app.overlay {
+        *preview_lines = None;
+    }
+    set_viewer_scroll(&mut app, 2, 5);
+    mouse(&mut app, RIGHT, 5, 5);
+    assert_eq!(viewer_state(&app), (false, 2, 5));
 }
 
 #[test]
